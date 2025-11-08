@@ -87,7 +87,7 @@ func resourceFlagValidatorCreate(ctx context.Context, d *schema.ResourceData, m 
 		d.Set("points", challenge.Points)
 		d.Set("message", fmt.Sprintf("🎉 Congratulations! You solved '%s' and earned %d points!", challenge.Name, challenge.Points))
 		d.Set("timestamp", time.Now().UTC().Format(time.RFC3339))
-		
+
 		diags = append(diags, diag.Diagnostic{
 			Severity: diag.Warning,
 			Summary:  "Challenge Completed!",
