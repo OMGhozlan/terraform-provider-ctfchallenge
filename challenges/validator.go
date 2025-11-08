@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -100,7 +99,7 @@ var Challenges = map[string]*Challenge{
 		Name:        "Cryptographic Compute",
 		Description: "Use Terraform's cryptographic functions",
 		Points:      500,
-		Flag:        "flag{cry pt0_func_m4st3r}",
+		Flag:        "flag{crypt0_func_m4st3r}",
 		Difficulty:  "advanced",
 		Category:    "functions",
 		Validator:   validateCrypto,
@@ -110,11 +109,13 @@ var Challenges = map[string]*Challenge{
 // validateBasics checks for a solution to the "Terraform Basics" challenge.
 // Players must create at least 3 dependent resources.
 func validateBasics(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{t3rr4f0rm_d3p3nd3nc13s}"
+	
 	if depsStr, ok := input["dependencies"].(string); ok {
 		// Count comma-separated values or JSON array items
 		deps := strings.Split(depsStr, ",")
 		if len(deps) >= 3 {
-			return true, Challenges["terraform_basics"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("create at least 3 dependent resources (found %d)", len(deps))
 	}
@@ -124,13 +125,15 @@ func validateBasics(input map[string]interface{}) (bool, string, error) {
 // validateExpressions checks for the "Expression Expert" challenge.
 // Players must compute: base64(sha256("terraform" + "expressions" + "rock"))
 func validateExpressions(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{3xpr3ss10ns_unl0ck3d}"
+	
 	if result, ok := input["computed_value"].(string); ok {
 		expected := "terraform" + "expressions" + "rock"
 		hash := sha256.Sum256([]byte(expected))
 		expectedB64 := base64.StdEncoding.EncodeToString(hash[:])
 
 		if result == expectedB64 {
-			return true, Challenges["expression_expert"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("computed value doesn't match expected hash")
 	}
@@ -140,6 +143,8 @@ func validateExpressions(input map[string]interface{}) (bool, string, error) {
 // validateState checks understanding of state management.
 // Players must provide a resource count that matches a specific pattern.
 func validateState(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{st4t3_m4n4g3m3nt_m4st3r}"
+	
 	if countStr, ok := input["resource_count"].(string); ok {
 		count, err := strconv.Atoi(countStr)
 		if err != nil {
@@ -147,7 +152,7 @@ func validateState(input map[string]interface{}) (bool, string, error) {
 		}
 		// The magic number is 42 (a nod to the answer to everything)
 		if count == 42 {
-			return true, Challenges["state_secrets"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("the state reveals a different count is needed")
 	}
@@ -156,10 +161,12 @@ func validateState(input map[string]interface{}) (bool, string, error) {
 
 // validateModules checks if player created outputs from modules correctly.
 func validateModules(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{m0dul3_c0mp0s1t10n_pr0}"
+	
 	if moduleOutput, ok := input["module_output"].(string); ok {
 		// Check if output contains evidence of module composition
 		if strings.Contains(moduleOutput, "module.") && len(moduleOutput) > 20 {
-			return true, Challenges["module_master"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("module output doesn't show proper composition")
 	}
@@ -168,13 +175,15 @@ func validateModules(input map[string]interface{}) (bool, string, error) {
 
 // validateDynamicBlocks checks if player used dynamic blocks correctly.
 func validateDynamicBlocks(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{dyn4m1c_bl0cks_r0ck}"
+	
 	if blockCount, ok := input["dynamic_block_count"].(string); ok {
 		count, err := strconv.Atoi(blockCount)
 		if err != nil {
 			return false, "", fmt.Errorf("dynamic_block_count must be a number")
 		}
 		if count >= 5 {
-			return true, Challenges["dynamic_blocks"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("generate at least 5 dynamic blocks")
 	}
@@ -184,6 +193,8 @@ func validateDynamicBlocks(input map[string]interface{}) (bool, string, error) {
 // validateForEach validates the for_each challenge.
 // Players must create resources for a specific set of items.
 func validateForEach(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{f0r_34ch_1s_p0w3rful}"
+	
 	if items, ok := input["items"].(string); ok {
 		// Expecting a JSON-like representation of the set/map
 		requiredItems := []string{"alpha", "beta", "gamma", "delta"}
@@ -194,7 +205,7 @@ func validateForEach(input map[string]interface{}) (bool, string, error) {
 			}
 		}
 		if matchCount == len(requiredItems) {
-			return true, Challenges["for_each_wizard"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("create for_each resources with items: alpha, beta, gamma, delta")
 	}
@@ -203,6 +214,8 @@ func validateForEach(input map[string]interface{}) (bool, string, error) {
 
 // validateDataSource checks data source filtering skills.
 func validateDataSource(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{d4t4_s0urc3_sl3uth}"
+	
 	if filteredCount, ok := input["filtered_count"].(string); ok {
 		count, err := strconv.Atoi(filteredCount)
 		if err != nil {
@@ -210,7 +223,7 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 		}
 		// Specific count from filtering a mock data source
 		if count == 7 {
-			return true, Challenges["data_source_detective"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("incorrect filter result")
 	}
@@ -220,6 +233,8 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 // validateCrypto validates cryptographic function mastery.
 // Players must provide: md5(sha256("terraform_ctf_2024"))
 func validateCrypto(input map[string]interface{}) (bool, string, error) {
+	correctFlag := "flag{crypt0_func_m4st3r}"
+	
 	if hash, ok := input["crypto_hash"].(string); ok {
 		secret := "terraform_ctf_2024"
 		sha := sha256.Sum256([]byte(secret))
@@ -227,7 +242,7 @@ func validateCrypto(input map[string]interface{}) (bool, string, error) {
 		expected := hex.EncodeToString(md5Hash[:])
 
 		if hash == expected {
-			return true, Challenges["cryptographic_compute"].Flag, nil
+			return true, correctFlag, nil
 		}
 		return false, "", fmt.Errorf("cryptographic hash doesn't match expected value")
 	}
