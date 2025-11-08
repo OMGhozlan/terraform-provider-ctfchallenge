@@ -123,24 +123,63 @@ func validateBasics(input map[string]interface{}) (bool, string, error) {
 }
 
 // validateExpressions checks for the "Expression Expert" challenge.
-// Players must compute: base64(sha256("terraform" + "expressions" + "rock"))
-// Note: Terraform's sha256() returns hex, so we accept base64 of that hex string
+// Players must compute: base64encode(sha256("terraformexpressionsrock"))
+//
+// In Terraform:
+//
+//	sha256("text") returns a lowercase hex string (64 characters)
+//	base64encode("text") encodes the string to base64
+//
+// So we compute SHA256, convert to hex (lowercase), then base64 encode that hex string.
 func validateExpressions(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{3xpr3ss10ns_unl0ck3d}"
 
 	if result, ok := input["computed_value"].(string); ok {
-		expected := "terraformexpressionsrock"
+		// The expected input string
+		inputString := "terraformexpressionsrock"
 
-		// Terraform's sha256() returns hex string, not raw bytes
-		// So we compute what Terraform would produce:
-		hash := sha256.Sum256([]byte(expected))
-		hexString := hex.EncodeToString(hash[:])                            // This matches Terraform's sha256() output
-		expectedB64 := base64.StdEncoding.EncodeToString([]byte(hexString)) // base64 of hex string
+		// Step 1: Compute SHA256 hash (produces 32 bytes)
+		hashBytes := sha256.Sum256([]byte(inputString))
+
+		// Step 2: Convert to lowercase hex string (this matches Terraform's sha256() output)
+		// This will be a 64-character hex string
+		hexString := hex.EncodeToString(hashBytes[:])
+
+		// Step 3: Base64 encode the hex string (this matches Terraform's base64encode())
+		// base64encode in Terraform takes a string and encodes it
+		expectedB64 := base64.StdEncoding.EncodeToString([]byte(hexString))
+
+		// Debug: Also check if they just base64-encoded the raw bytes (common mistake)
+		wrongB64 := base64.StdEncoding.EncodeToString(hashBytes[:])
 
 		if result == expectedB64 {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("computed value doesn't match expected hash")
+
+		// Provide helpful error message
+		if result == wrongB64 {
+			return false, "", fmt.Errorf("you base64-encoded the raw SHA256 bytes instead of the hex string.\n\n"+
+				"Terraform's sha256() returns a HEX STRING, not raw bytes.\n"+
+				"Use: base64encode(sha256(\"%s\"))\n\n"+
+				"The sha256() function returns: %s\n"+
+				"Then base64encode() of that hex string gives: %s",
+				inputString, hexString, expectedB64)
+		}
+
+		return false, "", fmt.Errorf("computed value doesn't match expected result.\n\n"+
+			"Expected computation in Terraform:\n"+
+			"  base64encode(sha256(\"%s\"))\n\n"+
+			"Step by step:\n"+
+			"  1. sha256(\"%s\") = %s\n"+
+			"  2. base64encode(\"%s\") = %s\n\n"+
+			"Your result: %s\n\n"+
+			"Hint: Copy this into terraform console to test:\n"+
+			"  base64encode(sha256(\"%s\"))",
+			inputString,
+			inputString, hexString,
+			hexString, expectedB64,
+			result,
+			inputString)
 	}
 	return false, "", fmt.Errorf("provide 'computed_value' in proof_of_work")
 }
@@ -159,7 +198,7 @@ func validateState(input map[string]interface{}) (bool, string, error) {
 		if count == 42 {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("the state reveals a different count is needed")
+		return false, "", fmt.Errorf("the state reveals a different count is needed (hint: Douglas Adams)")
 	}
 	return false, "", fmt.Errorf("provide 'resource_count' in proof_of_work")
 }
@@ -173,7 +212,7 @@ func validateModules(input map[string]interface{}) (bool, string, error) {
 		if strings.Contains(moduleOutput, "module.") && len(moduleOutput) > 20 {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("module output doesn't show proper composition")
+		return false, "", fmt.Errorf("module output doesn't show proper composition (should contain 'module.' and be descriptive)")
 	}
 	return false, "", fmt.Errorf("provide 'module_output' in proof_of_work")
 }
@@ -190,7 +229,7 @@ func validateDynamicBlocks(input map[string]interface{}) (bool, string, error) {
 		if count >= 5 {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("generate at least 5 dynamic blocks")
+		return false, "", fmt.Errorf("generate at least 5 dynamic blocks (you have %d)", count)
 	}
 	return false, "", fmt.Errorf("provide 'dynamic_block_count' in proof_of_work")
 }
@@ -212,7 +251,14 @@ func validateForEach(input map[string]interface{}) (bool, string, error) {
 		if matchCount == len(requiredItems) {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("create for_each resources with items: alpha, beta, gamma, delta")
+
+		missing := []string{}
+		for _, item := range requiredItems {
+			if !strings.Contains(items, item) {
+				missing = append(missing, item)
+			}
+		}
+		return false, "", fmt.Errorf("missing required items: %s. Need all of: alpha, beta, gamma, delta", strings.Join(missing, ", "))
 	}
 	return false, "", fmt.Errorf("provide 'items' in proof_of_work")
 }
@@ -230,7 +276,7 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 		if count == 7 {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("incorrect filter result")
+		return false, "", fmt.Errorf("incorrect filter result (expected 7, got %d)", count)
 	}
 	return false, "", fmt.Errorf("provide 'filtered_count' in proof_of_work")
 }
@@ -242,14 +288,33 @@ func validateCrypto(input map[string]interface{}) (bool, string, error) {
 
 	if hash, ok := input["crypto_hash"].(string); ok {
 		secret := "terraform_ctf_11_2025"
-		sha := sha256.Sum256([]byte(secret))
-		md5Hash := md5.Sum(sha[:])
+
+		// Step 1: SHA256 of the secret (returns hex string in Terraform)
+		shaBytes := sha256.Sum256([]byte(secret))
+		shaHex := hex.EncodeToString(shaBytes[:])
+
+		// Step 2: MD5 of the SHA256 hex string (Terraform's md5() takes a string)
+		md5Hash := md5.Sum([]byte(shaHex))
 		expected := hex.EncodeToString(md5Hash[:])
 
 		if hash == expected {
 			return true, correctFlag, nil
 		}
-		return false, "", fmt.Errorf("cryptographic hash doesn't match expected value")
+
+		return false, "", fmt.Errorf("cryptographic hash doesn't match expected value.\n\n"+
+			"Expected computation in Terraform:\n"+
+			"  md5(sha256(\"%s\"))\n\n"+
+			"Step by step:\n"+
+			"  1. sha256(\"%s\") = %s\n"+
+			"  2. md5(\"%s\") = %s\n\n"+
+			"Your result: %s\n\n"+
+			"Hint: Use terraform console:\n"+
+			"  md5(sha256(\"%s\"))",
+			secret,
+			secret, shaHex,
+			shaHex, expected,
+			hash,
+			secret)
 	}
 	return false, "", fmt.Errorf("provide 'crypto_hash' in proof_of_work")
 }
@@ -265,7 +330,7 @@ func GetHint(challengeID string, level int) string {
 		"expression_expert": {
 			"Look at Terraform's hash and encoding functions",
 			"Combine sha256() and base64encode() functions",
-			"Concatenate the strings: 'terraform' + 'expressions' + 'rock', hash with sha256, then base64encode",
+			"In terraform console, run: base64encode(sha256(\"terraformexpressionsrock\"))",
 		},
 		"state_secrets": {
 			"The answer to life, the universe, and everything...",
@@ -295,7 +360,7 @@ func GetHint(challengeID string, level int) string {
 		"cryptographic_compute": {
 			"Chain multiple hash functions",
 			"Start with sha256, then md5 the result",
-			"Compute: md5(sha256('terraform_ctf_11_2025'))",
+			"In terraform console, run: md5(sha256(\"terraform_ctf_11_2025\"))",
 		},
 	}
 
@@ -345,5 +410,5 @@ func ValidatePuzzleInput(inputs map[string]interface{}) (bool, string) {
 		return true, "Puzzle solved! XOR of all inputs equals zero."
 	}
 
-	return false, fmt.Sprintf("XOR result: %d (must be 0)", xorResult)
+	return false, fmt.Sprintf("XOR result: %d (must be 0). Try again!", xorResult)
 }

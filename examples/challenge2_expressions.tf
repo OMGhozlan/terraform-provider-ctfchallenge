@@ -33,11 +33,16 @@ locals {
 
 resource "ctfchallenge_flag_validator" "expressions" {
   challenge_id = "expression_expert"
-  flag         = "flag{3xpr3ss10ns_unl0ck3d}"
 
   proof_of_work = {
     computed_value = local.encoded
   }
+}
+
+# The flag is your reward!
+output "flag" {
+  value     = ctfchallenge_flag_validator.expressions.flag
+  sensitive = true
 }
 
 output "result" {

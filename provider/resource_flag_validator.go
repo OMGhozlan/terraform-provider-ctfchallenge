@@ -23,15 +23,9 @@ func resourceFlagValidator() *schema.Resource {
 				ForceNew:    true,
 				Description: "The ID of the challenge to validate",
 			},
-			"flag": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Sensitive:   true,
-				Description: "The flag you discovered for this challenge",
-			},
 			"proof_of_work": {
 				Type:        schema.TypeMap,
-				Optional:    true,
+				Required:    true,
 				Description: "Proof that you completed the challenge requirements",
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
@@ -44,6 +38,12 @@ func resourceFlagValidator() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Validation result message",
+			},
+			"flag": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Sensitive:   true,
+				Description: "The flag revealed upon successful completion",
 			},
 			"points": {
 				Type:        schema.TypeInt,
@@ -63,7 +63,6 @@ func resourceFlagValidatorCreate(ctx context.Context, d *schema.ResourceData, m 
 	var diags diag.Diagnostics
 
 	challengeID := d.Get("challenge_id").(string)
-	flag := d.Get("flag").(string)
 
 	challenge, exists := challenges.Challenges[challengeID]
 	if !exists {
@@ -76,31 +75,30 @@ func resourceFlagValidatorCreate(ctx context.Context, d *schema.ResourceData, m 
 	if err != nil {
 		d.Set("validated", false)
 		d.Set("points", 0)
+		d.Set("flag", "")
 		d.Set("message", fmt.Sprintf("❌ Challenge failed: %s", err.Error()))
 		diags = append(diags, diag.Diagnostic{
-			Severity: diag.Warning,
+			Severity: diag.Error,
 			Summary:  "Challenge validation failed",
 			Detail:   err.Error(),
 		})
-	} else if validated && flag == correctFlag {
+	} else if validated {
 		d.Set("validated", true)
 		d.Set("points", challenge.Points)
+		d.Set("flag", correctFlag)
 		d.Set("message", fmt.Sprintf("🎉 Congratulations! You solved '%s' and earned %d points!", challenge.Name, challenge.Points))
 		d.Set("timestamp", time.Now().UTC().Format(time.RFC3339))
 
 		diags = append(diags, diag.Diagnostic{
 			Severity: diag.Warning,
-			Summary:  "Challenge Completed!",
-			Detail:   fmt.Sprintf("You earned %d points for completing '%s'", challenge.Points, challenge.Name),
+			Summary:  "🎉 Challenge Completed!",
+			Detail:   fmt.Sprintf("You earned %d points for completing '%s'. Check the 'flag' output for your reward!", challenge.Points, challenge.Name),
 		})
-	} else if validated && flag != correctFlag {
-		d.Set("validated", false)
-		d.Set("points", 0)
-		d.Set("message", "✓ Challenge requirements met, but flag is incorrect")
 	} else {
 		d.Set("validated", false)
 		d.Set("points", 0)
-		d.Set("message", "❌ Challenge requirements not met and/or incorrect flag")
+		d.Set("flag", "")
+		d.Set("message", "❌ Challenge requirements not met")
 	}
 
 	d.SetId(fmt.Sprintf("%s-%d", challengeID, time.Now().Unix()))
