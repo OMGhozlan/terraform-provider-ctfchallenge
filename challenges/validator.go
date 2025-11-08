@@ -124,13 +124,18 @@ func validateBasics(input map[string]interface{}) (bool, string, error) {
 
 // validateExpressions checks for the "Expression Expert" challenge.
 // Players must compute: base64(sha256("terraform" + "expressions" + "rock"))
+// Note: Terraform's sha256() returns hex, so we accept base64 of that hex string
 func validateExpressions(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{3xpr3ss10ns_unl0ck3d}"
 
 	if result, ok := input["computed_value"].(string); ok {
-		expected := "terraform" + "expressions" + "rock"
+		expected := "terraformexpressionsrock"
+
+		// Terraform's sha256() returns hex string, not raw bytes
+		// So we compute what Terraform would produce:
 		hash := sha256.Sum256([]byte(expected))
-		expectedB64 := base64.StdEncoding.EncodeToString(hash[:])
+		hexString := hex.EncodeToString(hash[:])                            // This matches Terraform's sha256() output
+		expectedB64 := base64.StdEncoding.EncodeToString([]byte(hexString)) // base64 of hex string
 
 		if result == expectedB64 {
 			return true, correctFlag, nil
