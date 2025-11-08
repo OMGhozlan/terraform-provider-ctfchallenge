@@ -236,12 +236,12 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 }
 
 // validateCrypto validates cryptographic function mastery.
-// Players must provide: md5(sha256("terraform_ctf_2024"))
+// Players must provide: md5(sha256("terraform_ctf_11_2025"))
 func validateCrypto(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{crypt0_func_m4st3r}"
 
 	if hash, ok := input["crypto_hash"].(string); ok {
-		secret := "terraform_ctf_2024"
+		secret := "terraform_ctf_11_2025"
 		sha := sha256.Sum256([]byte(secret))
 		md5Hash := md5.Sum(sha[:])
 		expected := hex.EncodeToString(md5Hash[:])
@@ -295,7 +295,7 @@ func GetHint(challengeID string, level int) string {
 		"cryptographic_compute": {
 			"Chain multiple hash functions",
 			"Start with sha256, then md5 the result",
-			"Compute: md5(sha256('terraform_ctf_2024'))",
+			"Compute: md5(sha256('terraform_ctf_11_2025'))",
 		},
 	}
 

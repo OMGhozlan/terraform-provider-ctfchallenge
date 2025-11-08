@@ -204,13 +204,13 @@ resource "ctfchallenge_flag_validator" "datasource" {
 
 **Objective:** Chain cryptographic functions
 
-**Hint:** Compute md5(sha256("terraform_ctf_2024"))
+**Hint:** Compute md5(sha256("terraform_ctf_11_2025"))
 
 **Solution:**
 
 ```terraform
 locals {
-  secret = "terraform_ctf_2024"
+  secret = "terraform_ctf_11_2025"
   sha    = sha256(local.secret)
   result = md5(local.sha)
 }
