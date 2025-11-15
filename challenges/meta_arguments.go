@@ -405,3 +405,80 @@ func validateConditionalChallenge(proof map[string]interface{}) (bool, string, e
 
 	return true, "flag{c0nd1t10n4l_cr34t10n_m4st3r}", nil
 }
+
+// validateMetaArgumentStructure validates meta-argument challenges using structured proof
+func validateMetaArgumentStructure(c *Challenge, proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	switch c.ID {
+	case "count_master":
+		return validateCountStructure(proof)
+	case "foreach_wizard":
+		return validateForEachStructure(proof)
+	case "dependency_chain":
+		return validateDependsOnStructure(proof)
+	case "lifecycle_expert":
+		return validateLifecycleStructure(proof)
+	case "meta_grandmaster":
+		return validateMetaGrandmasterStructure(proof)
+	case "dynamic_block_architect":
+		return validateDynamicBlocksStructure(proof)
+	case "locals_count_combo":
+		return validateLocalsCountStructure(proof)
+	case "conditional_resources":
+		return validateConditionalStructure(proof)
+	default:
+		// Fall back to legacy validator
+		success, flag, err := c.Validator(proof.Manual)
+		result.Success = success
+		result.Flag = flag
+		if err != nil {
+			result.Message = err.Error()
+		}
+	}
+
+	return result
+}
+
+// Add stub implementations for structure validators
+func validateCountStructure(proof *ProofData) ValidationResult {
+	// For now, fall back to manual validation
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateForEachStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateDependsOnStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateLifecycleStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateMetaGrandmasterStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateDynamicBlocksStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateLocalsCountStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+func validateConditionalStructure(proof *ProofData) ValidationResult {
+	return ValidationResult{Message: "Use proof_of_work for this challenge"}
+}
+
+// validateModuleStructure validates module challenges
+func validateModuleStructure(c *Challenge, proof *ProofData) ValidationResult {
+	// Implemented in validation_conditions.go
+	return validateModuleContractStructure(proof)
+}

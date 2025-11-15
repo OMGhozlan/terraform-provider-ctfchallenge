@@ -19,12 +19,84 @@ type Challenge struct {
 	Flag        string
 	Difficulty  string
 	Category    string
-	Validator   func(input map[string]interface{}) (bool, string, error)
+	Validator   func(input map[string]interface{}) (bool, string, error) // Legacy validator
 }
 
-// Challenges holds all available challenges.
-var Challenges = map[string]*Challenge{
-	"terraform_basics": {
+// ValidationResult contains the result of proof validation
+type ValidationResult struct {
+	Success bool
+	Flag    string
+	Message string
+	Details []string
+}
+
+// ProofData contains all types of proof that can be submitted
+type ProofData struct {
+	Resources   []ResourceProof
+	DataSources []DataSourceProof
+	Module      *ModuleProof
+	Manual      map[string]interface{}
+	Source      string
+}
+
+// ResourceProof contains proof from a Terraform resource
+type ResourceProof struct {
+	ResourceType  string
+	ResourceName  string
+	Attributes    map[string]interface{}
+	Lifecycle     *LifecycleConfig
+	MetaArguments map[string]interface{}
+}
+
+// DataSourceProof contains proof from a Terraform data source
+type DataSourceProof struct {
+	DataSourceType string
+	DataSourceName string
+	Attributes     map[string]interface{}
+	Lifecycle      *LifecycleConfig
+}
+
+// ModuleProof contains proof from a Terraform module
+type ModuleProof struct {
+	ModuleName        string
+	InputValidations  []ValidationRule
+	OutputValidations []ValidationRule
+	ResourcesCount    int
+}
+
+// LifecycleConfig represents lifecycle block configuration
+type LifecycleConfig struct {
+	CreateBeforeDestroy bool             `json:"create_before_destroy"`
+	PreventDestroy      bool             `json:"prevent_destroy"`
+	IgnoreChanges       []string         `json:"ignore_changes"`
+	Preconditions       []ConditionBlock `json:"preconditions"`
+	Postconditions      []ConditionBlock `json:"postconditions"`
+}
+
+// ConditionBlock represents a precondition or postcondition
+type ConditionBlock struct {
+	Condition    string `json:"condition"`
+	ErrorMessage string `json:"error_message"`
+}
+
+// ValidationRule represents an input or output validation
+type ValidationRule struct {
+	Type         string `json:"type"` // "precondition" or "postcondition"
+	Condition    string `json:"condition"`
+	ErrorMessage string `json:"error_message"`
+	Target       string `json:"target"` // what's being validated
+}
+
+// Challenges holds all available challenges - INITIALIZED AS EMPTY MAP
+var Challenges = make(map[string]*Challenge)
+
+func init() {
+	// Register basic challenges that don't need structure validation
+	registerBasicChallenges()
+}
+
+func registerBasicChallenges() {
+	Challenges["terraform_basics"] = &Challenge{
 		ID:          "terraform_basics",
 		Name:        "Terraform Basics",
 		Description: "Understand resource dependencies and outputs",
@@ -33,8 +105,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "beginner",
 		Category:    "fundamentals",
 		Validator:   validateBasics,
-	},
-	"expression_expert": {
+	}
+
+	Challenges["expression_expert"] = &Challenge{
 		ID:          "expression_expert",
 		Name:        "Expression Expert",
 		Description: "Master Terraform expressions and functions",
@@ -43,8 +116,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "intermediate",
 		Category:    "expressions",
 		Validator:   validateExpressions,
-	},
-	"state_secrets": {
+	}
+
+	Challenges["state_secrets"] = &Challenge{
 		ID:          "state_secrets",
 		Name:        "State Secrets",
 		Description: "Understand Terraform state management",
@@ -53,8 +127,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "beginner",
 		Category:    "state",
 		Validator:   validateState,
-	},
-	"module_master": {
+	}
+
+	Challenges["module_master"] = &Challenge{
 		ID:          "module_master",
 		Name:        "Module Master",
 		Description: "Create and use Terraform modules effectively",
@@ -63,8 +138,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "advanced",
 		Category:    "modules",
 		Validator:   validateModules,
-	},
-	"dynamic_blocks": {
+	}
+
+	Challenges["dynamic_blocks"] = &Challenge{
 		ID:          "dynamic_blocks",
 		Name:        "Dynamic Blocks Challenge",
 		Description: "Master dynamic block generation",
@@ -73,8 +149,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "intermediate",
 		Category:    "advanced-syntax",
 		Validator:   validateDynamicBlocks,
-	},
-	"for_each_wizard": {
+	}
+
+	Challenges["for_each_wizard"] = &Challenge{
 		ID:          "for_each_wizard",
 		Name:        "For-Each Wizard",
 		Description: "Use for_each to manage multiple resources elegantly",
@@ -83,8 +160,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "intermediate",
 		Category:    "loops",
 		Validator:   validateForEach,
-	},
-	"data_source_detective": {
+	}
+
+	Challenges["data_source_detective"] = &Challenge{
 		ID:          "data_source_detective",
 		Name:        "Data Source Detective",
 		Description: "Query and filter data sources effectively",
@@ -93,8 +171,9 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "beginner",
 		Category:    "data-sources",
 		Validator:   validateDataSource,
-	},
-	"cryptographic_compute": {
+	}
+
+	Challenges["cryptographic_compute"] = &Challenge{
 		ID:          "cryptographic_compute",
 		Name:        "Cryptographic Compute",
 		Description: "Use Terraform's cryptographic functions",
@@ -103,16 +182,84 @@ var Challenges = map[string]*Challenge{
 		Difficulty:  "advanced",
 		Category:    "functions",
 		Validator:   validateCrypto,
-	},
+	}
 }
 
-// validateBasics checks for a solution to the "Terraform Basics" challenge.
-// Players must create at least 3 dependent resources.
+// ValidateProof validates the proof data and returns a result
+func (c *Challenge) ValidateProof(proof *ProofData) ValidationResult {
+	// If we have structured proof (resources, data sources, module), use enhanced validation
+	if len(proof.Resources) > 0 || len(proof.DataSources) > 0 || proof.Module != nil {
+		return c.validateStructuredProof(proof)
+	}
+
+	// Fall back to legacy validator for manual proof
+	success, flag, err := c.Validator(proof.Manual)
+	result := ValidationResult{
+		Success: success,
+		Flag:    flag,
+		Details: []string{},
+	}
+
+	if err != nil {
+		result.Message = err.Error()
+	} else if success {
+		result.Message = fmt.Sprintf("✓ Challenge '%s' completed successfully!", c.Name)
+	} else {
+		result.Message = "Challenge requirements not met"
+	}
+
+	return result
+}
+
+// validateStructuredProof validates proof based on actual resource/module structure
+func (c *Challenge) validateStructuredProof(proof *ProofData) ValidationResult {
+	// Delegate to category-specific validators
+	switch c.Category {
+	case "validation":
+		return validateValidationChallengeStructure(c, proof)
+	case "meta-arguments":
+		return validateMetaArgumentStructure(c, proof)
+	case "modules":
+		return validateModuleStructure(c, proof)
+	default:
+		// Fall back to legacy validation
+		success, flag, err := c.Validator(proof.Manual)
+		result := ValidationResult{
+			Success: success,
+			Flag:    flag,
+			Details: []string{},
+		}
+		if err != nil {
+			result.Message = err.Error()
+		}
+		return result
+	}
+}
+
+// Helper function to check if condition uses 'self' reference
+func conditionUsesSelf(condition string) bool {
+	return strings.Contains(condition, "self.")
+}
+
+// Helper function to validate error message quality
+func validateErrorMessage(msg string, minLength int) bool {
+	return len(strings.TrimSpace(msg)) >= minLength
+}
+
+// Helper function to count specific operators in condition
+func countOperators(condition string, operators []string) map[string]int {
+	counts := make(map[string]int)
+	for _, op := range operators {
+		counts[op] = strings.Count(condition, op)
+	}
+	return counts
+}
+
+// Legacy validator functions
 func validateBasics(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{t3rr4f0rm_d3p3nd3nc13s}"
 
 	if depsStr, ok := input["dependencies"].(string); ok {
-		// Count comma-separated values or JSON array items
 		deps := strings.Split(depsStr, ",")
 		if len(deps) >= 3 {
 			return true, correctFlag, nil
@@ -122,41 +269,20 @@ func validateBasics(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'dependencies' as a comma-separated string in proof_of_work")
 }
 
-// validateExpressions checks for the "Expression Expert" challenge.
-// Players must compute: base64encode(sha256("terraformexpressionsrock"))
-//
-// In Terraform:
-//
-//	sha256("text") returns a lowercase hex string (64 characters)
-//	base64encode("text") encodes the string to base64
-//
-// So we compute SHA256, convert to hex (lowercase), then base64 encode that hex string.
 func validateExpressions(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{3xpr3ss10ns_unl0ck3d}"
 
 	if result, ok := input["computed_value"].(string); ok {
-		// The expected input string
 		inputString := "terraformexpressionsrock"
-
-		// Step 1: Compute SHA256 hash (produces 32 bytes)
 		hashBytes := sha256.Sum256([]byte(inputString))
-
-		// Step 2: Convert to lowercase hex string (this matches Terraform's sha256() output)
-		// This will be a 64-character hex string
 		hexString := hex.EncodeToString(hashBytes[:])
-
-		// Step 3: Base64 encode the hex string (this matches Terraform's base64encode())
-		// base64encode in Terraform takes a string and encodes it
 		expectedB64 := base64.StdEncoding.EncodeToString([]byte(hexString))
-
-		// Debug: Also check if they just base64-encoded the raw bytes (common mistake)
 		wrongB64 := base64.StdEncoding.EncodeToString(hashBytes[:])
 
 		if result == expectedB64 {
 			return true, correctFlag, nil
 		}
 
-		// Provide helpful error message
 		if result == wrongB64 {
 			return false, "", fmt.Errorf("you base64-encoded the raw SHA256 bytes instead of the hex string.\n\n"+
 				"Terraform's sha256() returns a HEX STRING, not raw bytes.\n"+
@@ -184,8 +310,6 @@ func validateExpressions(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'computed_value' in proof_of_work")
 }
 
-// validateState checks understanding of state management.
-// Players must provide a resource count that matches a specific pattern.
 func validateState(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{st4t3_m4n4g3m3nt_m4st3r}"
 
@@ -194,7 +318,6 @@ func validateState(input map[string]interface{}) (bool, string, error) {
 		if err != nil {
 			return false, "", fmt.Errorf("resource_count must be a number")
 		}
-		// The magic number is 42 (a nod to the answer to everything)
 		if count == 42 {
 			return true, correctFlag, nil
 		}
@@ -203,12 +326,10 @@ func validateState(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'resource_count' in proof_of_work")
 }
 
-// validateModules checks if player created outputs from modules correctly.
 func validateModules(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{m0dul3_c0mp0s1t10n_pr0}"
 
 	if moduleOutput, ok := input["module_output"].(string); ok {
-		// Check if output contains evidence of module composition
 		if strings.Contains(moduleOutput, "module.") && len(moduleOutput) > 20 {
 			return true, correctFlag, nil
 		}
@@ -217,7 +338,6 @@ func validateModules(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'module_output' in proof_of_work")
 }
 
-// validateDynamicBlocks checks if player used dynamic blocks correctly.
 func validateDynamicBlocks(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{dyn4m1c_bl0cks_r0ck}"
 
@@ -234,13 +354,10 @@ func validateDynamicBlocks(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'dynamic_block_count' in proof_of_work")
 }
 
-// validateForEach validates the for_each challenge.
-// Players must create resources for a specific set of items.
 func validateForEach(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{f0r_34ch_1s_p0w3rful}"
 
 	if items, ok := input["items"].(string); ok {
-		// Expecting a JSON-like representation of the set/map
 		requiredItems := []string{"alpha", "beta", "gamma", "delta"}
 		matchCount := 0
 		for _, item := range requiredItems {
@@ -263,7 +380,6 @@ func validateForEach(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'items' in proof_of_work")
 }
 
-// validateDataSource checks data source filtering skills.
 func validateDataSource(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{d4t4_s0urc3_sl3uth}"
 
@@ -272,7 +388,6 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 		if err != nil {
 			return false, "", fmt.Errorf("filtered_count must be a number")
 		}
-		// Specific count from filtering a mock data source
 		if count == 7 {
 			return true, correctFlag, nil
 		}
@@ -281,19 +396,13 @@ func validateDataSource(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'filtered_count' in proof_of_work")
 }
 
-// validateCrypto validates cryptographic function mastery.
-// Players must provide: md5(sha256("terraform_ctf_11_2025"))
 func validateCrypto(input map[string]interface{}) (bool, string, error) {
 	correctFlag := "flag{crypt0_func_m4st3r}"
 
 	if hash, ok := input["crypto_hash"].(string); ok {
 		secret := "terraform_ctf_11_2025"
-
-		// Step 1: SHA256 of the secret (returns hex string in Terraform)
 		shaBytes := sha256.Sum256([]byte(secret))
 		shaHex := hex.EncodeToString(shaBytes[:])
-
-		// Step 2: MD5 of the SHA256 hex string (Terraform's md5() takes a string)
 		md5Hash := md5.Sum([]byte(shaHex))
 		expected := hex.EncodeToString(md5Hash[:])
 
@@ -319,7 +428,35 @@ func validateCrypto(input map[string]interface{}) (bool, string, error) {
 	return false, "", fmt.Errorf("provide 'crypto_hash' in proof_of_work")
 }
 
-// GetHint provides hints for a given challenge at different levels.
+func ValidatePuzzleInput(inputs map[string]interface{}) (bool, string) {
+	numbers := []int{}
+
+	for i := 1; i <= 5; i++ {
+		key := fmt.Sprintf("input_%d", i)
+		if valStr, ok := inputs[key].(string); ok {
+			val, err := strconv.Atoi(valStr)
+			if err == nil {
+				numbers = append(numbers, val)
+			}
+		}
+	}
+
+	if len(numbers) != 5 {
+		return false, "Provide exactly 5 numbers (input_1 through input_5)"
+	}
+
+	xorResult := 0
+	for _, num := range numbers {
+		xorResult ^= num
+	}
+
+	if xorResult == 0 {
+		return true, "Puzzle solved! XOR of all inputs equals zero."
+	}
+
+	return false, fmt.Sprintf("XOR result: %d (must be 0). Try again!", xorResult)
+}
+
 func GetHint(challengeID string, level int) string {
 	hints := map[string][]string{
 		"terraform_basics": {
@@ -373,42 +510,10 @@ func GetHint(challengeID string, level int) string {
 	return "No hints available for this challenge"
 }
 
-// GetAllChallengeIDs returns a list of all challenge IDs.
 func GetAllChallengeIDs() []string {
 	ids := make([]string, 0, len(Challenges))
 	for id := range Challenges {
 		ids = append(ids, id)
 	}
 	return ids
-}
-
-// ValidatePuzzleInput validates input for the puzzle box resource.
-func ValidatePuzzleInput(inputs map[string]interface{}) (bool, string) {
-	// Puzzle: XOR all numbers and check if result equals 0
-	numbers := []int{}
-
-	for i := 1; i <= 5; i++ {
-		key := fmt.Sprintf("input_%d", i)
-		if valStr, ok := inputs[key].(string); ok {
-			val, err := strconv.Atoi(valStr)
-			if err == nil {
-				numbers = append(numbers, val)
-			}
-		}
-	}
-
-	if len(numbers) != 5 {
-		return false, "Provide exactly 5 numbers (input_1 through input_5)"
-	}
-
-	xorResult := 0
-	for _, num := range numbers {
-		xorResult ^= num
-	}
-
-	if xorResult == 0 {
-		return true, "Puzzle solved! XOR of all inputs equals zero."
-	}
-
-	return false, fmt.Sprintf("XOR result: %d (must be 0). Try again!", xorResult)
 }

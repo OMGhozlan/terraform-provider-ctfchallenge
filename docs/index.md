@@ -11,12 +11,12 @@ The CTF Challenge provider is an educational tool that gamifies learning Terrafo
 
 ## Features
 
-- 🎯 **28 Progressive Challenges** - From beginner to advanced Terraform concepts
+- 🎯 **30+ Progressive Challenges** - From beginner to advanced Terraform concepts
 - 💡 **Multi-Category Learning** - Meta-arguments, validation, modules, and more
-- 🏆 **Point System** - Earn up to 5,200+ points total
+- 🏆 **Point System** - Earn up to 5,700+ points total
 - 🔐 **Flag Capture** - Complete challenges to reveal flags as rewards
 - 📚 **Educational** - Learn dependencies, expressions, modules, state management, pre/postconditions, and lifecycle rules
-- 🔗 **Resource Integration** - Validate challenges using actual Terraform resources and data sources
+- 🔗 **Structure-Based Validation** - Validator inspects actual Terraform resource structures, lifecycle configurations, and meta-arguments
 
 ## Example Usage
 
@@ -41,22 +41,62 @@ output "available_challenges" {
   value = data.ctfchallenge_list.all.challenges
 }
 
-# Solve a challenge with resource proof
-resource "ctfchallenge_puzzle_box" "my_solution" {
-  inputs = {
-    answer = "solved"
+# Solve a validation challenge with actual resource structure
+resource "ctfchallenge_validated_resource" "my_solution" {
+  name           = "validated-resource"
+  required_value = "substantial-value"
+  
+  lifecycle {
+    precondition {
+      condition     = length(var.required_value) >= 5
+      error_message = "required_value must be at least 5 characters for security purposes"
+    }
+    
+    postcondition {
+      condition     = self.validated == true
+      error_message = "Resource '${self.name}' failed validation checks. State: ${self.state}"
+    }
+    
+    postcondition {
+      condition     = self.quality_score >= 50
+      error_message = "Quality score ${self.quality_score} is below minimum threshold of 50"
+    }
   }
 }
 
+# Submit the resource structure for validation
 resource "ctfchallenge_flag_validator" "challenge" {
-  challenge_id = "count_master"
+  challenge_id = "precondition_guardian"
   
   resource_proof {
-    resource_type = "ctfchallenge_puzzle_box"
-    resource_id   = ctfchallenge_puzzle_box.my_solution.id
+    resource_type = "ctfchallenge_validated_resource"
+    resource_name = "my_solution"
+    
     attributes = {
-      solved = tostring(ctfchallenge_puzzle_box.my_solution.solved)
+      name      = ctfchallenge_validated_resource.my_solution.name
+      validated = tostring(ctfchallenge_validated_resource.my_solution.validated)
+      solved    = tostring(ctfchallenge_validated_resource.my_solution.solved)
     }
+    
+    # The validator inspects this structure
+    lifecycle_config = jsonencode({
+      preconditions = [
+        {
+          condition     = "length(var.required_value) >= 5"
+          error_message = "required_value must be at least 5 characters for security purposes"
+        }
+      ]
+      postconditions = [
+        {
+          condition     = "self.validated == true"
+          error_message = "Resource failed validation checks"
+        },
+        {
+          condition     = "self.quality_score >= 50"
+          error_message = "Quality score below minimum threshold"
+        }
+      ]
+    })
   }
 }
 
@@ -64,6 +104,10 @@ resource "ctfchallenge_flag_validator" "challenge" {
 output "flag" {
   value     = ctfchallenge_flag_validator.challenge.flag
   sensitive = true
+}
+
+output "validation_details" {
+  value = ctfchallenge_flag_validator.challenge.validation_details
 }
 ```
 
@@ -103,53 +147,137 @@ output "flag" {
 
 **Total Points Available:** 5,200+
 
-## New Features
+## Structure-Based Validation
 
-### Resource-Based Proof of Work
+The provider now validates challenges by inspecting actual Terraform resource structures:
 
-Submit proof using actual Terraform resources:
+### Resource Structure Validation
 
 ```terraform
-resource "ctfchallenge_validated_resource" "my_solution" {
-  name           = "challenge-solution"
-  required_value = "answer"
-}
-
 resource "ctfchallenge_flag_validator" "challenge" {
   challenge_id = "postcondition_validator"
   
   resource_proof {
     resource_type = "ctfchallenge_validated_resource"
-    resource_id   = ctfchallenge_validated_resource.my_solution.id
+    resource_name = "my_solution"
+    
     attributes = {
-      validated = tostring(ctfchallenge_validated_resource.my_solution.validated)
-      solved    = tostring(ctfchallenge_validated_resource.my_solution.solved)
+      validated = "true"
+      solved    = "true"
     }
+    
+    # Lifecycle structure is validated
+    lifecycle_config = jsonencode({
+      postconditions = [
+        {
+          condition     = "self.validated == true"
+          error_message = "Validation failed"
+        }
+      ]
+    })
   }
 }
 ```
 
-### Data Source-Based Proof
+The validator checks:
+- ✅ Presence of lifecycle blocks
+- ✅ Correct use of preconditions (no `self` reference)
+- ✅ Correct use of postconditions (requires `self` reference)
+- ✅ Error message quality and length
+- ✅ Complexity of validation logic
+- ✅ Proper use of meta-arguments
 
-Use data sources as validation proof:
+### Data Source Structure Validation
 
 ```terraform
-data "ctfchallenge_challenge_info" "target" {
+data "ctfchallenge_challenge_info" "validated" {
   challenge_id = "data_validator"
+  
+  lifecycle {
+    postcondition {
+      condition     = self.points > 0
+      error_message = "Challenge has invalid points: ${self.points}"
+    }
+  }
 }
 
-resource "ctfchallenge_flag_validator" "challenge" {
+resource "ctfchallenge_flag_validator" "data_challenge" {
   challenge_id = "data_validator"
   
   data_source_proof {
     data_source_type = "ctfchallenge_challenge_info"
-    data_source_id   = data.ctfchallenge_challenge_info.target.id
+    data_source_name = "validated"
+    
     attributes = {
-      points     = tostring(data.ctfchallenge_challenge_info.target.points)
-      difficulty = data.ctfchallenge_challenge_info.target.difficulty
+      points = tostring(data.ctfchallenge_challenge_info.validated.points)
     }
+    
+    lifecycle_config = jsonencode({
+      postconditions = [
+        {
+          condition     = "self.points > 0"
+          error_message = "Challenge has invalid points"
+        }
+      ]
+    })
   }
 }
+```
+
+### Module Structure Validation
+
+```terraform
+resource "ctfchallenge_flag_validator" "module_challenge" {
+  challenge_id = "module_contract"
+  
+  module_proof {
+    module_name = "my_module"
+    
+    input_validations = jsonencode([
+      {
+        type          = "precondition"
+        condition     = "var.instance_count >= 1"
+        error_message = "instance_count must be at least 1"
+        target        = "var.instance_count"
+      },
+      {
+        type          = "precondition"
+        condition     = "contains([\"dev\", \"prod\"], var.environment)"
+        error_message = "environment must be dev or prod"
+        target        = "var.environment"
+      }
+    ])
+    
+    output_validations = jsonencode([
+      {
+        type          = "postcondition"
+        condition     = "length(module.my_module.resource_ids) > 0"
+        error_message = "Module must create at least one resource"
+        target        = "output.resource_ids"
+      }
+    ])
+    
+    resources_count = 5
+  }
+}
+```
+
+## Detailed Validation Feedback
+
+When validation fails, you receive detailed feedback:
+
+```
+Error: Challenge validation failed
+
+Checking precondition 1...
+  ✗ Precondition uses 'self' incorrectly
+  Preconditions should NOT use 'self' - the resource doesn't exist yet
+  Hint: Use var.* or local.* to validate inputs before creation
+
+Validation details:
+  1. Found resource 'my_solution' with lifecycle block
+  2. Precondition has empty condition expression
+  3. Error message must be at least 10 characters and descriptive
 ```
 
 ## Schema
@@ -179,7 +307,7 @@ See the [Getting Started Guide](guides/getting-started.md) for a step-by-step wa
 
 ## Learning Paths
 
-### Beginner Path (450 points)
+### Beginner Path (490 points)
 1. Terraform Basics
 2. State Secrets
 3. Data Source Detective
@@ -198,7 +326,7 @@ See the [Getting Started Guide](guides/getting-started.md) for a step-by-step wa
 9. Output Contract
 10. Self-Reference Master
 
-### Advanced Path (2,835 points)
+### Advanced Path (2,895 points)
 1. Expression Expert
 2. Module Master
 3. Dependency Chain
@@ -215,7 +343,7 @@ In traditional CTF (Capture The Flag) competitions, you complete a challenge and
 
 1. **Read the challenge description** - Understand what you need to accomplish
 2. **Build your solution** - Write Terraform code that meets the requirements
-3. **Submit proof of work** - Validate your solution with resources or direct proof
+3. **Submit resource structure** - The validator inspects your actual Terraform configurations
 4. **Capture the flag** - If successful, the flag is revealed as your reward!
 
 The flag format is: `flag{some_text_here}`

@@ -2,7 +2,6 @@ package challenges
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -122,450 +121,744 @@ func registerValidationConditionChallenges() {
 	}
 }
 
+// validateValidationChallengeStructure validates validation challenges using structured proof
+func validateValidationChallengeStructure(c *Challenge, proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	switch c.ID {
+	case "precondition_guardian":
+		return validatePreconditionStructure(proof)
+	case "postcondition_validator":
+		return validatePostconditionStructure(proof)
+	case "condition_master":
+		return validateCombinedConditionsStructure(proof)
+	case "data_validator":
+		return validateDataSourceConditionStructure(proof)
+	case "output_contract":
+		return validateOutputConditionStructure(proof)
+	case "validation_chain":
+		return validateValidationChainStructure(proof)
+	case "module_contract":
+		return validateModuleContractStructure(proof)
+	case "self_reference_master":
+		return validateSelfReferenceStructure(proof)
+	case "conditional_validation":
+		return validateConditionalValidationStructure(proof)
+	case "error_message_designer":
+		return validateErrorMessageStructure(proof)
+	default:
+		result.Message = "Unknown validation challenge"
+	}
+
+	return result
+}
+
+func validatePreconditionStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.Resources) == 0 {
+		result.Message = "No resources provided. You must create a resource with a precondition in its lifecycle block."
+		result.Details = append(result.Details, "Expected: At least one resource with lifecycle.precondition")
+		return result
+	}
+
+	// Check each resource for preconditions
+	var validResource *ResourceProof
+	for i := range proof.Resources {
+		r := &proof.Resources[i]
+		if r.Lifecycle != nil && len(r.Lifecycle.Preconditions) > 0 {
+			validResource = r
+			break
+		}
+	}
+
+	if validResource == nil {
+		result.Message = "No preconditions found in any resource lifecycle block"
+		result.Details = append(result.Details, "Add a lifecycle block with precondition to your resource")
+		result.Details = append(result.Details, "Example: lifecycle { precondition { condition = ..., error_message = ... } }")
+		return result
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ Found resource '%s' with lifecycle block", validResource.ResourceName))
+
+	// Validate each precondition
+	for i, precond := range validResource.Lifecycle.Preconditions {
+		result.Details = append(result.Details, fmt.Sprintf("Checking precondition %d...", i+1))
+
+		// Check condition expression exists and is not empty
+		if precond.Condition == "" {
+			result.Message = fmt.Sprintf("Precondition %d has empty condition expression", i+1)
+			result.Details = append(result.Details, "✗ Condition expression is required")
+			return result
+		}
+		result.Details = append(result.Details, fmt.Sprintf("  ✓ Has condition: %s", truncate(precond.Condition, 60)))
+
+		// Check that precondition does NOT use 'self' (resource doesn't exist yet)
+		if conditionUsesSelf(precond.Condition) {
+			result.Message = fmt.Sprintf("Precondition %d incorrectly uses 'self'", i+1)
+			result.Details = append(result.Details, "  ✗ Preconditions should NOT use 'self' - the resource doesn't exist yet")
+			result.Details = append(result.Details, "  Hint: Use var.* or local.* to validate inputs before creation")
+			return result
+		}
+		result.Details = append(result.Details, "  ✓ Does not use 'self' (correct for precondition)")
+
+		// Check error message
+		if !validateErrorMessage(precond.ErrorMessage, 10) {
+			result.Message = fmt.Sprintf("Precondition %d has inadequate error message", i+1)
+			result.Details = append(result.Details, "  ✗ Error message must be at least 10 characters and descriptive")
+			return result
+		}
+		result.Details = append(result.Details, fmt.Sprintf("  ✓ Has descriptive error message (%d chars)", len(precond.ErrorMessage)))
+	}
+
+	result.Success = true
+	result.Flag = "flag{pr3c0nd1t10n_gu4rd14n_m4st3r}"
+	result.Message = "✓ Precondition challenge completed! Your resource properly validates inputs before creation."
+	return result
+}
+
+func validatePostconditionStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.Resources) == 0 && len(proof.DataSources) == 0 {
+		result.Message = "No resources or data sources provided"
+		result.Details = append(result.Details, "You must create a resource or data source with a postcondition")
+		return result
+	}
+
+	// Check resources for postconditions
+	var hasPostcondition bool
+	var postconditions []ConditionBlock
+	var resourceName string
+
+	for i := range proof.Resources {
+		r := &proof.Resources[i]
+		if r.Lifecycle != nil && len(r.Lifecycle.Postconditions) > 0 {
+			hasPostcondition = true
+			postconditions = r.Lifecycle.Postconditions
+			resourceName = r.ResourceName
+			break
+		}
+	}
+
+	// Also check data sources
+	if !hasPostcondition {
+		for i := range proof.DataSources {
+			ds := &proof.DataSources[i]
+			if ds.Lifecycle != nil && len(ds.Lifecycle.Postconditions) > 0 {
+				hasPostcondition = true
+				postconditions = ds.Lifecycle.Postconditions
+				resourceName = ds.DataSourceName
+				break
+			}
+		}
+	}
+
+	if !hasPostcondition {
+		result.Message = "No postconditions found in lifecycle blocks"
+		result.Details = append(result.Details, "Add a lifecycle block with postcondition to your resource/data source")
+		result.Details = append(result.Details, "Postconditions validate resource state AFTER creation")
+		return result
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ Found '%s' with postcondition", resourceName))
+
+	// Validate each postcondition
+	for i, postcond := range postconditions {
+		result.Details = append(result.Details, fmt.Sprintf("Checking postcondition %d...", i+1))
+
+		if postcond.Condition == "" {
+			result.Message = fmt.Sprintf("Postcondition %d has empty condition", i+1)
+			return result
+		}
+		result.Details = append(result.Details, fmt.Sprintf("  ✓ Has condition: %s", truncate(postcond.Condition, 60)))
+
+		// Postconditions MUST use 'self' to reference the resource
+		if !conditionUsesSelf(postcond.Condition) {
+			result.Message = fmt.Sprintf("Postcondition %d does not use 'self'", i+1)
+			result.Details = append(result.Details, "  ✗ Postconditions must use 'self' to reference resource attributes")
+			result.Details = append(result.Details, "  Example: self.solved == true or self.status == \"active\"")
+			return result
+		}
+		result.Details = append(result.Details, "  ✓ Uses 'self' to reference resource (correct for postcondition)")
+
+		// Extract what attribute is being validated
+		selfRefs := extractSelfReferences(postcond.Condition)
+		if len(selfRefs) > 0 {
+			result.Details = append(result.Details, fmt.Sprintf("  ✓ Validates attributes: %s", strings.Join(selfRefs, ", ")))
+		}
+
+		// Check error message
+		if !validateErrorMessage(postcond.ErrorMessage, 10) {
+			result.Message = "Postcondition error message too short"
+			result.Details = append(result.Details, "  ✗ Error message must be descriptive (min 10 chars)")
+			return result
+		}
+		result.Details = append(result.Details, "  ✓ Has descriptive error message")
+	}
+
+	result.Success = true
+	result.Flag = "flag{p0stc0nd1t10n_v4l1d4t0r_3xp3rt}"
+	result.Message = "✓ Postcondition challenge completed! Your configuration properly validates resource state after creation."
+	return result
+}
+
+func validateCombinedConditionsStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.Resources) == 0 {
+		result.Message = "No resources provided"
+		result.Details = append(result.Details, "Create a resource with BOTH precondition and postcondition in lifecycle")
+		return result
+	}
+
+	// Find a resource with both pre and post conditions
+	var validResource *ResourceProof
+	for i := range proof.Resources {
+		r := &proof.Resources[i]
+		if r.Lifecycle != nil &&
+			len(r.Lifecycle.Preconditions) > 0 &&
+			len(r.Lifecycle.Postconditions) > 0 {
+			validResource = r
+			break
+		}
+	}
+
+	if validResource == nil {
+		result.Message = "No resource found with both precondition and postcondition"
+		result.Details = append(result.Details, "You must use BOTH in the same resource's lifecycle block")
+
+		// Give specific feedback
+		hasPre := false
+		hasPost := false
+		for i := range proof.Resources {
+			r := &proof.Resources[i]
+			if r.Lifecycle != nil {
+				if len(r.Lifecycle.Preconditions) > 0 {
+					hasPre = true
+					result.Details = append(result.Details, fmt.Sprintf("  Resource '%s' has preconditions", r.ResourceName))
+				}
+				if len(r.Lifecycle.Postconditions) > 0 {
+					hasPost = true
+					result.Details = append(result.Details, fmt.Sprintf("  Resource '%s' has postconditions", r.ResourceName))
+				}
+			}
+		}
+
+		if hasPre && !hasPost {
+			result.Details = append(result.Details, "Missing: postconditions (add postcondition block to validate after creation)")
+		} else if hasPost && !hasPre {
+			result.Details = append(result.Details, "Missing: preconditions (add precondition block to validate before creation)")
+		}
+
+		return result
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ Found resource '%s' with both condition types", validResource.ResourceName))
+
+	// Validate preconditions don't use self
+	for i, precond := range validResource.Lifecycle.Preconditions {
+		if conditionUsesSelf(precond.Condition) {
+			result.Message = fmt.Sprintf("Precondition %d incorrectly uses 'self'", i+1)
+			result.Details = append(result.Details, "  ✗ Preconditions should NOT use 'self'")
+			return result
+		}
+	}
+	result.Details = append(result.Details, fmt.Sprintf("  ✓ %d precondition(s) correctly validate inputs", len(validResource.Lifecycle.Preconditions)))
+
+	// Validate postconditions DO use self
+	selfCount := 0
+	for _, postcond := range validResource.Lifecycle.Postconditions {
+		if conditionUsesSelf(postcond.Condition) {
+			selfCount++
+		}
+	}
+
+	if selfCount == 0 {
+		result.Message = "Postconditions must use 'self' to reference resource attributes"
+		result.Details = append(result.Details, "  ✗ None of your postconditions use 'self'")
+		return result
+	}
+	result.Details = append(result.Details, fmt.Sprintf("  ✓ %d postcondition(s) correctly use 'self'", selfCount))
+
+	// Verify error messages are descriptive
+	for _, pre := range validResource.Lifecycle.Preconditions {
+		if len(pre.ErrorMessage) < 10 {
+			result.Message = "Precondition error messages must be descriptive (min 10 chars)"
+			return result
+		}
+	}
+
+	for _, post := range validResource.Lifecycle.Postconditions {
+		if len(post.ErrorMessage) < 10 {
+			result.Message = "Postcondition error messages must be descriptive (min 10 chars)"
+			return result
+		}
+	}
+
+	result.Details = append(result.Details, "  ✓ All error messages are descriptive")
+
+	result.Success = true
+	result.Flag = "flag{c0mb1n3d_c0nd1t10ns_m4st3r}"
+	result.Message = "✓ Combined conditions challenge completed! You've mastered both pre and post validation."
+	return result
+}
+
+func validateDataSourceConditionStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.DataSources) == 0 {
+		result.Message = "No data sources provided"
+		result.Details = append(result.Details, "Create a data source with postcondition to validate fetched data")
+		return result
+	}
+
+	var validDataSource *DataSourceProof
+	for i := range proof.DataSources {
+		ds := &proof.DataSources[i]
+		if ds.Lifecycle != nil && len(ds.Lifecycle.Postconditions) > 0 {
+			validDataSource = ds
+			break
+		}
+	}
+
+	if validDataSource == nil {
+		result.Message = "No data source with postconditions found"
+		result.Details = append(result.Details, "Data sources use postconditions to validate fetched data")
+		return result
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ Found data source '%s' with postconditions", validDataSource.DataSourceName))
+
+	// Validate postconditions use self
+	for i, postcond := range validDataSource.Lifecycle.Postconditions {
+		if !conditionUsesSelf(postcond.Condition) {
+			result.Message = fmt.Sprintf("Data source postcondition %d must use 'self'", i+1)
+			result.Details = append(result.Details, "  ✗ Use 'self' to reference data source attributes")
+			return result
+		}
+
+		selfRefs := extractSelfReferences(postcond.Condition)
+		result.Details = append(result.Details, fmt.Sprintf("  ✓ Validates data attributes: %s", strings.Join(selfRefs, ", ")))
+
+		if !validateErrorMessage(postcond.ErrorMessage, 15) {
+			result.Message = "Data source error messages should be detailed (min 15 chars)"
+			return result
+		}
+	}
+
+	result.Success = true
+	result.Flag = "flag{d4t4_s0urc3_v4l1d4t0r_pr0}"
+	result.Message = "✓ Data source validation completed! You're ensuring data quality at query time."
+	return result
+}
+
+func validateOutputConditionStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Message: "Output condition validation requires manual proof_of_work",
+		Details: []string{"Use proof_of_work with uses_output_block, uses_precondition, etc."},
+	}
+	return result
+}
+
+func validateValidationChainStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.Resources) < 3 {
+		result.Message = fmt.Sprintf("Validation chain requires at least 3 resources (found %d)", len(proof.Resources))
+		result.Details = append(result.Details, "Create a chain of resources with interconnected conditions")
+		return result
+	}
+
+	// Count total conditions
+	totalConditions := 0
+	for _, r := range proof.Resources {
+		if r.Lifecycle != nil {
+			totalConditions += len(r.Lifecycle.Preconditions)
+			totalConditions += len(r.Lifecycle.Postconditions)
+		}
+	}
+
+	if totalConditions < 4 {
+		result.Message = fmt.Sprintf("Validation chain needs at least 4 conditions (found %d)", totalConditions)
+		result.Details = append(result.Details, "Add more pre/postconditions across your resources")
+		return result
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ %d resources in chain", len(proof.Resources)))
+	result.Details = append(result.Details, fmt.Sprintf("✓ %d total conditions", totalConditions))
+
+	// Check for depends_on usage
+	hasDependencies := false
+	for _, r := range proof.Resources {
+		if deps, ok := r.MetaArguments["depends_on"]; ok && deps != "" {
+			hasDependencies = true
+			break
+		}
+	}
+
+	if !hasDependencies {
+		result.Message = "Validation chain should use depends_on for proper ordering"
+		result.Details = append(result.Details, "  ✗ Add depends_on meta-argument to establish dependencies")
+		return result
+	}
+
+	result.Details = append(result.Details, "✓ Uses depends_on for proper ordering")
+	result.Success = true
+	result.Flag = "flag{v4l1d4t10n_ch41n_4rch1t3ct}"
+	result.Message = "✓ Validation chain completed! You've built an interconnected validation system."
+	return result
+}
+
+func validateModuleContractStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if proof.Module == nil {
+		result.Message = "No module proof provided"
+		result.Details = append(result.Details, "Create a module with input/output validations")
+		return result
+	}
+
+	m := proof.Module
+	result.Details = append(result.Details, fmt.Sprintf("✓ Module '%s' provided", m.ModuleName))
+
+	if len(m.InputValidations) < 2 {
+		result.Message = fmt.Sprintf("Module needs at least 2 input validations (found %d)", len(m.InputValidations))
+		result.Details = append(result.Details, "  ✗ Add variable validation blocks or preconditions")
+		return result
+	}
+	result.Details = append(result.Details, fmt.Sprintf("  ✓ %d input validations", len(m.InputValidations)))
+
+	if len(m.OutputValidations) < 2 {
+		result.Message = fmt.Sprintf("Module needs at least 2 output validations (found %d)", len(m.OutputValidations))
+		result.Details = append(result.Details, "  ✗ Add postconditions to outputs")
+		return result
+	}
+	result.Details = append(result.Details, fmt.Sprintf("  ✓ %d output validations", len(m.OutputValidations)))
+
+	// Verify error messages
+	shortMessages := 0
+	for _, val := range append(m.InputValidations, m.OutputValidations...) {
+		if len(val.ErrorMessage) < 20 {
+			shortMessages++
+		}
+	}
+
+	if shortMessages > 0 {
+		result.Message = fmt.Sprintf("%d validation(s) have error messages that are too short", shortMessages)
+		result.Details = append(result.Details, "  ✗ Error messages should be consumer-friendly (min 20 chars)")
+		return result
+	}
+
+	result.Details = append(result.Details, "  ✓ All error messages are consumer-friendly")
+	result.Success = true
+	result.Flag = "flag{m0dul3_c0ntr4ct_d3s1gn3r_m4st3r}"
+	result.Message = "✓ Module contract completed! Your module has a clear, validated interface."
+	return result
+}
+
+func validateSelfReferenceStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	if len(proof.Resources) == 0 {
+		result.Message = "No resources provided"
+		return result
+	}
+
+	// Find resource with multiple self references
+	allSelfRefs := make(map[string]bool)
+	postcondCount := 0
+
+	for _, r := range proof.Resources {
+		if r.Lifecycle != nil {
+			for _, postcond := range r.Lifecycle.Postconditions {
+				postcondCount++
+				refs := extractSelfReferences(postcond.Condition)
+				for _, ref := range refs {
+					allSelfRefs[ref] = true
+				}
+
+				// Check for complex logic
+				if strings.Contains(postcond.Condition, "&&") || strings.Contains(postcond.Condition, "||") {
+					result.Details = append(result.Details, "  ✓ Uses complex boolean logic")
+				}
+			}
+		}
+	}
+
+	if len(allSelfRefs) < 3 {
+		result.Message = fmt.Sprintf("Must reference at least 3 different attributes with 'self' (found %d)", len(allSelfRefs))
+		result.Details = append(result.Details, "Add more postconditions that validate different attributes")
+		return result
+	}
+
+	if postcondCount < 2 {
+		result.Message = "Must have at least 2 postconditions"
+		return result
+	}
+
+	refList := make([]string, 0, len(allSelfRefs))
+	for ref := range allSelfRefs {
+		refList = append(refList, ref)
+	}
+
+	result.Details = append(result.Details, fmt.Sprintf("✓ %d unique self references: %s", len(refList), strings.Join(refList, ", ")))
+	result.Details = append(result.Details, fmt.Sprintf("✓ %d postconditions", postcondCount))
+
+	result.Success = true
+	result.Flag = "flag{s3lf_r3f3r3nc3_m4st3r_pr0}"
+	result.Message = "✓ Self-reference mastery achieved! You're validating multiple attributes effectively."
+	return result
+}
+
+func validateConditionalValidationStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	hasAnd := false
+	hasOr := false
+	hasFunctions := false
+	maxComplexity := 0
+
+	for _, r := range proof.Resources {
+		if r.Lifecycle != nil {
+			for _, cond := range append(r.Lifecycle.Preconditions, r.Lifecycle.Postconditions...) {
+				condition := cond.Condition
+
+				if strings.Contains(condition, "&&") {
+					hasAnd = true
+				}
+				if strings.Contains(condition, "||") {
+					hasOr = true
+				}
+
+				// Check for function usage
+				functions := []string{"length(", "can(", "try(", "contains(", "alltrue(", "anytrue("}
+				for _, fn := range functions {
+					if strings.Contains(condition, fn) {
+						hasFunctions = true
+						break
+					}
+				}
+
+				// Rough complexity score
+				complexity := strings.Count(condition, "&&") + strings.Count(condition, "||") + strings.Count(condition, "!")
+				if complexity > maxComplexity {
+					maxComplexity = complexity
+				}
+			}
+		}
+	}
+
+	if !hasAnd {
+		result.Message = "Must use && operator in conditions"
+		return result
+	}
+	result.Details = append(result.Details, "✓ Uses && operator")
+
+	if !hasOr {
+		result.Message = "Must use || operator in conditions"
+		return result
+	}
+	result.Details = append(result.Details, "✓ Uses || operator")
+
+	if !hasFunctions {
+		result.Message = "Must use Terraform functions in conditions"
+		result.Details = append(result.Details, "  Try: length(), can(), try(), contains(), etc.")
+		return result
+	}
+	result.Details = append(result.Details, "✓ Uses Terraform functions")
+
+	if maxComplexity < 2 {
+		result.Message = "Conditions not complex enough (need multiple operators)"
+		return result
+	}
+	result.Details = append(result.Details, fmt.Sprintf("✓ Complexity score: %d/10", min(maxComplexity+3, 10)))
+
+	result.Success = true
+	result.Flag = "flag{c0nd1t10n4l_v4l1d4t10n_3xp3rt}"
+	result.Message = "✓ Conditional validation mastery! Your logic is sophisticated and robust."
+	return result
+}
+
+func validateErrorMessageStructure(proof *ProofData) ValidationResult {
+	result := ValidationResult{
+		Success: false,
+		Details: []string{},
+	}
+
+	allMessages := []string{}
+	hasInterpolation := false
+	hasContext := false
+
+	// Collect all error messages
+	for _, r := range proof.Resources {
+		if r.Lifecycle != nil {
+			for _, cond := range append(r.Lifecycle.Preconditions, r.Lifecycle.Postconditions...) {
+				allMessages = append(allMessages, cond.ErrorMessage)
+			}
+		}
+	}
+
+	for _, ds := range proof.DataSources {
+		if ds.Lifecycle != nil {
+			for _, cond := range append(ds.Lifecycle.Preconditions, ds.Lifecycle.Postconditions...) {
+				allMessages = append(allMessages, cond.ErrorMessage)
+			}
+		}
+	}
+
+	if len(allMessages) < 3 {
+		result.Message = fmt.Sprintf("Need at least 3 error messages (found %d)", len(allMessages))
+		return result
+	}
+
+	// Check message quality
+	shortCount := 0
+	for _, msg := range allMessages {
+		if len(msg) < 20 {
+			shortCount++
+		}
+
+		// Check for interpolation (contains ${...})
+		if strings.Contains(msg, "${") && strings.Contains(msg, "}") {
+			hasInterpolation = true
+		}
+
+		// Check for context words
+		contextWords := []string{"must", "should", "expected", "required", "invalid", "failed"}
+		for _, word := range contextWords {
+			if strings.Contains(strings.ToLower(msg), word) {
+				hasContext = true
+				break
+			}
+		}
+	}
+
+	if shortCount > 0 {
+		result.Message = fmt.Sprintf("%d error message(s) too short (min 20 chars)", shortCount)
+		return result
+	}
+	result.Details = append(result.Details, fmt.Sprintf("✓ %d error messages, all descriptive", len(allMessages)))
+
+	if !hasInterpolation {
+		result.Message = "Error messages should use interpolation to show actual values"
+		result.Details = append(result.Details, "  Example: \"Value must be positive, got ${var.count}\"")
+		return result
+	}
+	result.Details = append(result.Details, "✓ Uses interpolation to show actual values")
+
+	if !hasContext {
+		result.Message = "Error messages should provide context about what failed"
+		return result
+	}
+	result.Details = append(result.Details, "✓ Messages provide helpful context")
+
+	result.Success = true
+	result.Flag = "flag{3rr0r_m3ss4g3_d3s1gn3r_pr0}"
+	result.Message = "✓ Error message design mastered! Your messages guide users effectively."
+	return result
+}
+
+// Helper functions
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func extractSelfReferences(condition string) []string {
+	refs := []string{}
+	parts := strings.Split(condition, "self.")
+	for i := 1; i < len(parts); i++ {
+		// Extract the attribute name (up to space, operator, or parenthesis)
+		attr := ""
+		for _, ch := range parts[i] {
+			if ch == ' ' || ch == '=' || ch == '!' || ch == '>' || ch == '<' || ch == ')' || ch == ',' {
+				break
+			}
+			attr += string(ch)
+		}
+		if attr != "" {
+			refs = append(refs, "self."+attr)
+		}
+	}
+	return refs
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Legacy validators (for backward compatibility with manual proof_of_work)
 func validatePreconditionChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for precondition usage
-	usesPrecondition, _ := proof["uses_precondition"].(string)
-	if usesPrecondition != "true" {
-		return false, "", fmt.Errorf("you must use a precondition block in lifecycle")
-	}
-
-	// Check for condition expression
-	conditionExpr, hasCondition := proof["condition_expression"].(string)
-	if !hasCondition || conditionExpr == "" {
-		return false, "", fmt.Errorf("missing 'condition_expression' - provide your condition logic")
-	}
-
-	// Verify it checks input before resource creation
-	checksInput, _ := proof["checks_input"].(string)
-	if checksInput != "true" {
-		return false, "", fmt.Errorf("precondition must validate input values before resource creation")
-	}
-
-	// Check for error message
-	errorMessage, hasError := proof["error_message"].(string)
-	if !hasError || len(errorMessage) < 10 {
-		return false, "", fmt.Errorf("provide a descriptive error_message (min 10 characters)")
-	}
-
-	// Verify placement in lifecycle block
-	inLifecycle, _ := proof["in_lifecycle_block"].(string)
-	if inLifecycle != "true" {
-		return false, "", fmt.Errorf("precondition must be placed in a lifecycle block")
-	}
-
-	// Check what is being validated
-	if _, hasValidates := proof["validates"].(string); !hasValidates {
-		return false, "", fmt.Errorf("specify what you're validating (e.g., 'variable', 'input', 'parameter')")
-	}
-
-	return true, "flag{pr3c0nd1t10n_gu4rd14n_m4st3r}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validatePostconditionChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for postcondition usage
-	usesPostcondition, _ := proof["uses_postcondition"].(string)
-	if usesPostcondition != "true" {
-		return false, "", fmt.Errorf("you must use a postcondition block in lifecycle")
-	}
-
-	// Check for self reference
-	usesSelf, _ := proof["uses_self"].(string)
-	if usesSelf != "true" {
-		return false, "", fmt.Errorf("postcondition must use 'self' to reference the resource")
-	}
-
-	// Check what attribute is validated
-	validatedAttr, hasAttr := proof["validated_attribute"].(string)
-	if !hasAttr || validatedAttr == "" {
-		return false, "", fmt.Errorf("specify which attribute you validated with 'self' (e.g., 'self.solved')")
-	}
-
-	// Verify it validates after creation
-	validatesAfter, _ := proof["validates_after_creation"].(string)
-	if validatesAfter != "true" {
-		return false, "", fmt.Errorf("postcondition validates the resource state AFTER creation")
-	}
-
-	// Check for error message
-	errorMessage, hasError := proof["error_message"].(string)
-	if !hasError || len(errorMessage) < 10 {
-		return false, "", fmt.Errorf("provide a descriptive error_message (min 10 characters)")
-	}
-
-	// Verify placement in lifecycle block
-	inLifecycle, _ := proof["in_lifecycle_block"].(string)
-	if inLifecycle != "true" {
-		return false, "", fmt.Errorf("postcondition must be placed in a lifecycle block")
-	}
-
-	return true, "flag{p0stc0nd1t10n_v4l1d4t0r_3xp3rt}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateCombinedConditionsChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Must have both precondition and postcondition
-	usesPre, _ := proof["uses_precondition"].(string)
-	usesPost, _ := proof["uses_postcondition"].(string)
-
-	if usesPre != "true" || usesPost != "true" {
-		return false, "", fmt.Errorf("you must use BOTH precondition and postcondition in the same resource")
-	}
-
-	// Check for self in postcondition only
-	usesSelf, _ := proof["postcondition_uses_self"].(string)
-	if usesSelf != "true" {
-		return false, "", fmt.Errorf("postcondition must use 'self' to reference resource attributes")
-	}
-
-	// Verify precondition doesn't use self
-	preUsesSelf, _ := proof["precondition_uses_self"].(string)
-	if preUsesSelf == "true" {
-		return false, "", fmt.Errorf("precondition should NOT use 'self' (resource doesn't exist yet)")
-	}
-
-	// Check that they validate different things
-	preValidates, hasPre := proof["precondition_validates"].(string)
-	postValidates, hasPost := proof["postcondition_validates"].(string)
-
-	if !hasPre || !hasPost {
-		return false, "", fmt.Errorf("specify what each condition validates")
-	}
-
-	if preValidates == postValidates {
-		return false, "", fmt.Errorf("precondition and postcondition should validate different aspects")
-	}
-
-	// Check for distinct error messages
-	preError, hasPreError := proof["precondition_error"].(string)
-	postError, hasPostError := proof["postcondition_error"].(string)
-
-	if !hasPreError || !hasPostError {
-		return false, "", fmt.Errorf("provide error messages for both conditions")
-	}
-
-	if len(preError) < 10 || len(postError) < 10 {
-		return false, "", fmt.Errorf("both error messages must be descriptive (min 10 characters)")
-	}
-
-	return true, "flag{c0mb1n3d_c0nd1t10ns_m4st3r}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateDataSourceConditionChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for data source usage
-	usesDataSource, _ := proof["uses_data_source"].(string)
-	if usesDataSource != "true" {
-		return false, "", fmt.Errorf("you must use a data source block")
-	}
-
-	// Data sources typically use postconditions
-	usesPostcondition, _ := proof["uses_postcondition"].(string)
-	if usesPostcondition != "true" {
-		return false, "", fmt.Errorf("data sources should use postconditions to validate fetched data")
-	}
-
-	// Check for self reference to data attributes
-	usesSelf, _ := proof["uses_self"].(string)
-	if usesSelf != "true" {
-		return false, "", fmt.Errorf("use 'self' to reference data source attributes")
-	}
-
-	// Verify what data attribute is validated
-	if validatedAttr, hasAttr := proof["validated_data_attribute"].(string); !hasAttr || validatedAttr == "" {
-		return false, "", fmt.Errorf("specify which data attribute you validated")
-	}
-
-	// Check validation purpose
-	validationPurpose, hasPurpose := proof["validation_purpose"].(string)
-	if !hasPurpose || len(validationPurpose) < 15 {
-		return false, "", fmt.Errorf("explain why this data validation is important (min 15 chars)")
-	}
-
-	return true, "flag{d4t4_s0urc3_v4l1d4t0r_pr0}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateOutputConditionChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for output block usage
-	usesOutput, _ := proof["uses_output_block"].(string)
-	if usesOutput != "true" {
-		return false, "", fmt.Errorf("you must use an output block with conditions")
-	}
-
-	// Outputs typically use preconditions to validate before outputting
-	usesPrecondition, _ := proof["uses_precondition"].(string)
-	if usesPrecondition != "true" {
-		return false, "", fmt.Errorf("output blocks typically use preconditions to validate before output")
-	}
-
-	// Check what is being validated
-	if validatesWhat, hasValidates := proof["validates_before_output"].(string); !hasValidates || validatesWhat == "" {
-		return false, "", fmt.Errorf("specify what you're validating before output")
-	}
-
-	// Check for module contract enforcement
-	enforcesContract, _ := proof["enforces_module_contract"].(string)
-	if enforcesContract != "true" {
-		return false, "", fmt.Errorf("output conditions should enforce module contracts")
-	}
-
-	// Verify error message helps module consumers
-	errorMessage, hasError := proof["consumer_friendly_error"].(string)
-	if !hasError || len(errorMessage) < 20 {
-		return false, "", fmt.Errorf("provide a consumer-friendly error message (min 20 chars)")
-	}
-
-	return true, "flag{0utput_c0ntr4ct_3nf0rc3r}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateValidationChainChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for multiple resources
-	resourceCount, hasCount := proof["resource_count"].(string)
-	if !hasCount {
-		return false, "", fmt.Errorf("specify how many resources are in your validation chain")
-	}
-
-	count, err := strconv.Atoi(resourceCount)
-	if err != nil || count < 3 {
-		return false, "", fmt.Errorf("validation chain must have at least 3 resources")
-	}
-
-	// Check for condition count
-	totalConditions, hasConditions := proof["total_conditions"].(string)
-	if !hasConditions {
-		return false, "", fmt.Errorf("specify total number of conditions (pre + post)")
-	}
-
-	conditions, err := strconv.Atoi(totalConditions)
-	if err != nil || conditions < 4 {
-		return false, "", fmt.Errorf("must have at least 4 total conditions in the chain")
-	}
-
-	// Verify conditions are interconnected
-	interconnected, _ := proof["conditions_interconnected"].(string)
-	if interconnected != "true" {
-		return false, "", fmt.Errorf("conditions must validate outputs from previous resources")
-	}
-
-	// Check for validation flow documentation
-	validationFlow, hasFlow := proof["validation_flow"].(string)
-	if !hasFlow || len(validationFlow) < 30 {
-		return false, "", fmt.Errorf("document your validation flow (min 30 chars)")
-	}
-
-	// Verify use of depends_on for proper ordering
-	usesDependsOn, _ := proof["uses_depends_on"].(string)
-	if usesDependsOn != "true" {
-		return false, "", fmt.Errorf("use depends_on to ensure proper validation order")
-	}
-
-	return true, "flag{v4l1d4t10n_ch41n_4rch1t3ct}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateModuleContractChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for module creation
-	createdModule, _ := proof["created_module"].(string)
-	if createdModule != "true" {
-		return false, "", fmt.Errorf("you must create a reusable module")
-	}
-
-	// Check for input validation (preconditions on variables)
-	inputValidations, hasInput := proof["input_validations"].(string)
-	if !hasInput {
-		return false, "", fmt.Errorf("specify number of input validations (variable preconditions)")
-	}
-
-	inputs, err := strconv.Atoi(inputValidations)
-	if err != nil || inputs < 2 {
-		return false, "", fmt.Errorf("module must validate at least 2 inputs")
-	}
-
-	// Check for output guarantees (postconditions)
-	outputGuarantees, hasOutput := proof["output_guarantees"].(string)
-	if !hasOutput {
-		return false, "", fmt.Errorf("specify number of output guarantees (postconditions)")
-	}
-
-	outputs, err := strconv.Atoi(outputGuarantees)
-	if err != nil || outputs < 2 {
-		return false, "", fmt.Errorf("module must guarantee at least 2 outputs with postconditions")
-	}
-
-	// Check for module documentation
-	moduleDoc, hasDoc := proof["module_documentation"].(string)
-	if !hasDoc || len(moduleDoc) < 50 {
-		return false, "", fmt.Errorf("provide comprehensive module documentation (min 50 chars)")
-	}
-
-	// Verify contract clarity
-	contractClear, _ := proof["contract_clearly_defined"].(string)
-	if contractClear != "true" {
-		return false, "", fmt.Errorf("module contract must be clearly defined with conditions")
-	}
-
-	// Check for helpful error messages
-	errorMessagesCount, hasErrors := proof["helpful_error_messages"].(string)
-	if !hasErrors {
-		return false, "", fmt.Errorf("specify number of helpful error messages")
-	}
-
-	errorCount, err := strconv.Atoi(errorMessagesCount)
-	if err != nil || errorCount < 4 {
-		return false, "", fmt.Errorf("provide at least 4 helpful error messages for consumers")
-	}
-
-	return true, "flag{m0dul3_c0ntr4ct_d3s1gn3r_m4st3r}", nil
+	return false, "", fmt.Errorf("use module_proof instead of manual proof_of_work")
 }
 
 func validateSelfReferenceChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for multiple self references
-	selfReferences, hasRefs := proof["self_references"].(string)
-	if !hasRefs {
-		return false, "", fmt.Errorf("specify how many 'self' references you used")
-	}
-
-	refs, err := strconv.Atoi(selfReferences)
-	if err != nil || refs < 3 {
-		return false, "", fmt.Errorf("must use 'self' to reference at least 3 different attributes")
-	}
-
-	// Check which attributes were validated
-	attributes, hasAttrs := proof["validated_attributes"].(string)
-	if !hasAttrs {
-		return false, "", fmt.Errorf("list the attributes you validated with 'self'")
-	}
-
-	attrList := strings.Split(attributes, ",")
-	if len(attrList) < 3 {
-		return false, "", fmt.Errorf("must validate at least 3 attributes")
-	}
-
-	// Verify complex validation logic
-	usesComplexLogic, _ := proof["uses_complex_logic"].(string)
-	if usesComplexLogic != "true" {
-		return false, "", fmt.Errorf("use complex boolean logic (&&, ||, !) in your conditions")
-	}
-
-	// Check for multiple postconditions
-	postconditionCount, hasPost := proof["postcondition_count"].(string)
-	if !hasPost {
-		return false, "", fmt.Errorf("specify number of postconditions")
-	}
-
-	postCount, err := strconv.Atoi(postconditionCount)
-	if err != nil || postCount < 2 {
-		return false, "", fmt.Errorf("use at least 2 postconditions with different 'self' validations")
-	}
-
-	return true, "flag{s3lf_r3f3r3nc3_m4st3r_pr0}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateConditionalValidationChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for complex boolean expressions
-	usesComplexBool, _ := proof["uses_complex_boolean"].(string)
-	if usesComplexBool != "true" {
-		return false, "", fmt.Errorf("use complex boolean expressions with multiple operators")
-	}
-
-	// Check which operators were used
-	operators, hasOps := proof["boolean_operators"].(string)
-	if !hasOps {
-		return false, "", fmt.Errorf("list boolean operators used (&&, ||, !)")
-	}
-
-	requiredOps := map[string]bool{
-		"&&": false,
-		"||": false,
-	}
-
-	opList := strings.Split(operators, ",")
-	for _, op := range opList {
-		op = strings.TrimSpace(op)
-		if _, exists := requiredOps[op]; exists {
-			requiredOps[op] = true
-		}
-	}
-
-	for op, used := range requiredOps {
-		if !used {
-			return false, "", fmt.Errorf("must use operator: %s", op)
-		}
-	}
-
-	// Check for multiple conditions in single expression
-	multipleChecks, hasMulti := proof["multiple_checks_in_condition"].(string)
-	if !hasMulti {
-		return false, "", fmt.Errorf("specify number of checks in your condition expression")
-	}
-
-	checks, err := strconv.Atoi(multipleChecks)
-	if err != nil || checks < 3 {
-		return false, "", fmt.Errorf("condition must check at least 3 things")
-	}
-
-	// Verify use of functions in conditions
-	usesFunctions, _ := proof["uses_functions"].(string)
-	if usesFunctions != "true" {
-		return false, "", fmt.Errorf("use Terraform functions in your conditions (length, can, try, etc.)")
-	}
-
-	// Check for validation complexity
-	complexityScore, hasScore := proof["complexity_score"].(string)
-	if !hasScore {
-		return false, "", fmt.Errorf("rate complexity of your validation (1-10)")
-	}
-
-	score, err := strconv.Atoi(complexityScore)
-	if err != nil || score < 7 {
-		return false, "", fmt.Errorf("validation must be sufficiently complex (score >= 7)")
-	}
-
-	return true, "flag{c0nd1t10n4l_v4l1d4t10n_3xp3rt}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
 
 func validateErrorMessageChallenge(proof map[string]interface{}) (bool, string, error) {
-	// Check for multiple error messages
-	errorCount, hasCount := proof["error_message_count"].(string)
-	if !hasCount {
-		return false, "", fmt.Errorf("specify number of error messages created")
-	}
-
-	count, err := strconv.Atoi(errorCount)
-	if err != nil || count < 3 {
-		return false, "", fmt.Errorf("must create at least 3 error messages")
-	}
-
-	// Check error message quality
-	messages, hasMessages := proof["error_messages"].(string)
-	if !hasMessages {
-		return false, "", fmt.Errorf("provide your error messages (separated by |)")
-	}
-
-	msgList := strings.Split(messages, "|")
-	if len(msgList) < 3 {
-		return false, "", fmt.Errorf("must provide at least 3 error messages")
-	}
-
-	// Verify messages are descriptive
-	for i, msg := range msgList {
-		if len(strings.TrimSpace(msg)) < 20 {
-			return false, "", fmt.Errorf("error message %d is too short (min 20 chars)", i+1)
-		}
-	}
-
-	// Check for helpful elements in messages
-	includesContext, _ := proof["includes_context"].(string)
-	if includesContext != "true" {
-		return false, "", fmt.Errorf("error messages must include context about what failed")
-	}
-
-	includesSolution, _ := proof["includes_solution_hint"].(string)
-	if includesSolution != "true" {
-		return false, "", fmt.Errorf("error messages should hint at how to fix the issue")
-	}
-
-	// Verify messages use interpolation
-	usesInterpolation, _ := proof["uses_interpolation"].(string)
-	if usesInterpolation != "true" {
-		return false, "", fmt.Errorf("use string interpolation in error messages to show actual values")
-	}
-
-	return true, "flag{3rr0r_m3ss4g3_d3s1gn3r_pr0}", nil
+	return false, "", fmt.Errorf("use resource_proof with lifecycle configuration instead of manual proof_of_work")
 }
