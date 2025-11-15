@@ -20,6 +20,7 @@ vendor/
 # IDE
 .idea/
 .vscode/
+.dummy/
 *.swp
 *.swo
 *~
