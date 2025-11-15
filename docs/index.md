@@ -7,15 +7,16 @@ description: |-
 
 # CTF Challenge Provider
 
-The CTF Challenge provider is an educational tool that gamifies learning Terraform. It provides a series of challenges that teach Terraform concepts through hands-on practice.
+The CTF Challenge provider is an educational tool that gamifies learning Terraform. It provides a comprehensive series of challenges that teach Terraform concepts through hands-on practice, from basic resource management to advanced validation patterns.
 
 ## Features
 
-- 🎯 **8 Progressive Challenges** - From beginner to advanced Terraform concepts
-- 💡 **Hint System** - Get help when you're stuck (with point penalties)
-- 🏆 **Point System** - Earn up to 2,250 points total
+- 🎯 **28 Progressive Challenges** - From beginner to advanced Terraform concepts
+- 💡 **Multi-Category Learning** - Meta-arguments, validation, modules, and more
+- 🏆 **Point System** - Earn up to 5,200+ points total
 - 🔐 **Flag Capture** - Complete challenges to reveal flags as rewards
-- 📚 **Educational** - Learn dependencies, expressions, modules, state management, and more
+- 📚 **Educational** - Learn dependencies, expressions, modules, state management, pre/postconditions, and lifecycle rules
+- 🔗 **Resource Integration** - Validate challenges using actual Terraform resources and data sources
 
 ## Example Usage
 
@@ -40,71 +41,116 @@ output "available_challenges" {
   value = data.ctfchallenge_list.all.challenges
 }
 
-# Get challenge information
-data "ctfchallenge_challenge_info" "basics" {
-  challenge_id = "terraform_basics"
+# Solve a challenge with resource proof
+resource "ctfchallenge_puzzle_box" "my_solution" {
+  inputs = {
+    answer = "solved"
+  }
 }
 
-# Solve a challenge by providing proof of work
-resource "null_resource" "first" {}
-resource "null_resource" "second" { depends_on = [null_resource.first] }
-resource "null_resource" "third" { depends_on = [null_resource.second] }
-
-resource "ctfchallenge_flag_validator" "basics" {
-  challenge_id = "terraform_basics"
+resource "ctfchallenge_flag_validator" "challenge" {
+  challenge_id = "count_master"
   
-  proof_of_work = {
-    dependencies = "${null_resource.first.id},${null_resource.second.id},${null_resource.third.id}"
+  resource_proof {
+    resource_type = "ctfchallenge_puzzle_box"
+    resource_id   = ctfchallenge_puzzle_box.my_solution.id
+    attributes = {
+      solved = tostring(ctfchallenge_puzzle_box.my_solution.solved)
+    }
   }
 }
 
 # Capture the flag!
 output "flag" {
-  value     = ctfchallenge_flag_validator.basics.flag
+  value     = ctfchallenge_flag_validator.challenge.flag
   sensitive = true
 }
 ```
 
-## Available Challenges
+## Challenge Categories
 
-| Challenge | Difficulty | Points | Category |
-|-----------|-----------|---------|----------|
-| [Terraform Basics](#terraform-basics) | Beginner | 100 | Fundamentals |
-| [Expression Expert](#expression-expert) | Intermediate | 350 | Expressions |
-| [State Secrets](#state-secrets) | Beginner | 200 | State |
-| [Module Master](#module-master) | Advanced | 400 | Modules |
-| [Dynamic Blocks](#dynamic-blocks) | Intermediate | 300 | Advanced Syntax |
-| [For-Each Wizard](#for-each-wizard) | Intermediate | 250 | Loops |
-| [Data Source Detective](#data-source-detective) | Beginner | 150 | Data Sources |
-| [Cryptographic Compute](#cryptographic-compute) | Advanced | 500 | Functions |
+### Fundamentals (450 points)
+- **Terraform Basics** (100 points) - Resource dependencies
+- **State Secrets** (200 points) - State management
+- **Data Source Detective** (150 points) - Data source queries
 
-**Total Points Available:** 2,250
+### Meta-Arguments (1,575 points)
+- **Count Master** (150 points) - Master the count meta-argument
+- **For Each Wizard** (200 points) - Use for_each effectively
+- **Dependency Chain** (175 points) - Explicit depends_on usage
+- **Lifecycle Expert** (225 points) - Lifecycle rules mastery
+- **Meta Grandmaster** (300 points) - Combine all meta-arguments
+- **Dynamic Blocks** (180 points) - Dynamic block generation
+- **Locals + Count Combo** (160 points) - Combine locals with count
+- **Conditional Resources** (140 points) - Conditional creation patterns
 
-## Challenge Descriptions
+### Validation (2,025 points)
+- **Precondition Guardian** (150 points) - Input validation with preconditions
+- **Postcondition Validator** (175 points) - Output validation with postconditions
+- **Condition Master** (200 points) - Combined pre/postconditions
+- **Data Validator** (160 points) - Data source validation
+- **Output Contract** (180 points) - Module contract enforcement
+- **Validation Chain** (250 points) - Interconnected validations
+- **Module Contract** (300 points) - Comprehensive module design
+- **Self-Reference Master** (190 points) - Advanced self usage
+- **Conditional Validation** (220 points) - Complex boolean logic
+- **Error Message Designer** (140 points) - Helpful error messages
 
-### Terraform Basics
-Learn about resource dependencies and the `depends_on` argument. Create a chain of dependent resources to understand execution order. Complete the challenge to capture your first flag!
+### Advanced (1,150 points)
+- **Expression Expert** (350 points) - Functions and expressions
+- **Module Master** (400 points) - Module composition
+- **Cryptographic Compute** (500 points) - Cryptographic functions
 
-### Expression Expert
-Master Terraform's expression syntax and built-in functions including string manipulation, hashing, and encoding. Solve cryptographic puzzles to reveal the flag.
+**Total Points Available:** 5,200+
 
-### State Secrets
-Understand Terraform state management and how Terraform tracks resources. Discover the "magic number" hidden in state concepts to unlock the flag.
+## New Features
 
-### Module Master
-Learn to create and use Terraform modules for code reuse and organization. Build composable infrastructure patterns and capture the flag through proper module composition.
+### Resource-Based Proof of Work
 
-### Dynamic Blocks
-Master the `dynamic` block feature for generating multiple nested blocks programmatically from data structures. Generate enough blocks to earn your flag.
+Submit proof using actual Terraform resources:
 
-### For-Each Wizard
-Use the `for_each` meta-argument to create multiple similar resources elegantly without repetition. Create the right resources to reveal your flag.
+```terraform
+resource "ctfchallenge_validated_resource" "my_solution" {
+  name           = "challenge-solution"
+  required_value = "answer"
+}
 
-### Data Source Detective
-Query and filter data sources effectively. Learn to extract and transform data for use in your infrastructure code. Filter correctly to capture the flag.
+resource "ctfchallenge_flag_validator" "challenge" {
+  challenge_id = "postcondition_validator"
+  
+  resource_proof {
+    resource_type = "ctfchallenge_validated_resource"
+    resource_id   = ctfchallenge_validated_resource.my_solution.id
+    attributes = {
+      validated = tostring(ctfchallenge_validated_resource.my_solution.validated)
+      solved    = tostring(ctfchallenge_validated_resource.my_solution.solved)
+    }
+  }
+}
+```
 
-### Cryptographic Compute
-Use Terraform's cryptographic and hashing functions to solve complex puzzles. Chain multiple functions together correctly to reveal the flag.
+### Data Source-Based Proof
+
+Use data sources as validation proof:
+
+```terraform
+data "ctfchallenge_challenge_info" "target" {
+  challenge_id = "data_validator"
+}
+
+resource "ctfchallenge_flag_validator" "challenge" {
+  challenge_id = "data_validator"
+  
+  data_source_proof {
+    data_source_type = "ctfchallenge_challenge_info"
+    data_source_id   = data.ctfchallenge_challenge_info.target.id
+    attributes = {
+      points     = tostring(data.ctfchallenge_challenge_info.target.points)
+      difficulty = data.ctfchallenge_challenge_info.target.difficulty
+    }
+  }
+}
+```
 
 ## Schema
 
@@ -121,12 +167,47 @@ See the [Getting Started Guide](guides/getting-started.md) for a step-by-step wa
 
 - [ctfchallenge_flag_validator](resources/flag_validator.md) - Validate challenge solutions and capture flags
 - [ctfchallenge_puzzle_box](resources/puzzle_box.md) - Solve logic puzzles for bonus flags
+- [ctfchallenge_meta_challenge](resources/meta_challenge.md) - Meta-argument focused challenges
+- [ctfchallenge_validated_resource](resources/validated_resource.md) - Resource with validation support
 
 ## Data Sources
 
 - [ctfchallenge_hint](data-sources/hint.md) - Get hints for challenges
 - [ctfchallenge_list](data-sources/list.md) - List all available challenges
-- [ctfchallenge_challenge_info](data-sources/challenge_info.md) - Get detailed information about a specific challenge
+- [ctfchallenge_challenge_info](data-sources/challenge_info.md) - Get detailed challenge information
+- [ctfchallenge_validation_helper](data-sources/validation_helper.md) - Validation assistance
+
+## Learning Paths
+
+### Beginner Path (450 points)
+1. Terraform Basics
+2. State Secrets
+3. Data Source Detective
+4. Conditional Resources
+5. Error Message Designer
+
+### Intermediate Path (1,915 points)
+1. Count Master
+2. For Each Wizard
+3. Locals + Count Combo
+4. Dynamic Blocks
+5. Precondition Guardian
+6. Postcondition Validator
+7. Condition Master
+8. Data Validator
+9. Output Contract
+10. Self-Reference Master
+
+### Advanced Path (2,835 points)
+1. Expression Expert
+2. Module Master
+3. Dependency Chain
+4. Lifecycle Expert
+5. Meta Grandmaster
+6. Validation Chain
+7. Module Contract
+8. Conditional Validation
+9. Cryptographic Compute
 
 ## How CTF Challenges Work
 
@@ -134,7 +215,7 @@ In traditional CTF (Capture The Flag) competitions, you complete a challenge and
 
 1. **Read the challenge description** - Understand what you need to accomplish
 2. **Build your solution** - Write Terraform code that meets the requirements
-3. **Submit proof of work** - Validate your solution with the flag_validator resource
+3. **Submit proof of work** - Validate your solution with resources or direct proof
 4. **Capture the flag** - If successful, the flag is revealed as your reward!
 
 The flag format is: `flag{some_text_here}`

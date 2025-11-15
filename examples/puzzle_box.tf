@@ -15,7 +15,7 @@ resource "ctfchallenge_puzzle_box" "xor_puzzle" {
     input_2 = "23"
     input_3 = "42"
     input_4 = "37"
-    input_5 = "11"  # 15 XOR 23 XOR 42 XOR 37 XOR 11 = 0
+    input_5 = "11" # 15 XOR 23 XOR 42 XOR 37 XOR 11 = 0
   }
 }
 

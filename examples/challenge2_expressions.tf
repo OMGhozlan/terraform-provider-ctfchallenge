@@ -13,7 +13,7 @@ provider "ctfchallenge" {
 # Get a hint if you need it
 data "ctfchallenge_hint" "expr_hint" {
   challenge_id = "expression_expert"
-  level        = 0  # 0, 1, or 2
+  level        = 0 # 0, 1, or 2
 }
 
 output "hint" {

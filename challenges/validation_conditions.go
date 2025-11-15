@@ -12,7 +12,7 @@ func init() {
 
 func registerValidationConditionChallenges() {
 	// Precondition Basics
-	Challenges["precondition_guardian"] = Challenge{
+	Challenges["precondition_guardian"] = &Challenge{
 		ID:          "precondition_guardian",
 		Name:        "Precondition Guardian",
 		Description: "Use preconditions to validate inputs before resource creation",
@@ -23,7 +23,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Postcondition Basics
-	Challenges["postcondition_validator"] = Challenge{
+	Challenges["postcondition_validator"] = &Challenge{
 		ID:          "postcondition_validator",
 		Name:        "Postcondition Validator",
 		Description: "Use postconditions with 'self' to validate resource attributes after creation",
@@ -34,7 +34,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Combined Pre/Post Conditions
-	Challenges["condition_master"] = Challenge{
+	Challenges["condition_master"] = &Challenge{
 		ID:          "condition_master",
 		Name:        "Condition Master",
 		Description: "Combine preconditions and postconditions in a single resource",
@@ -45,7 +45,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Data Source Validation
-	Challenges["data_validator"] = Challenge{
+	Challenges["data_validator"] = &Challenge{
 		ID:          "data_validator",
 		Name:        "Data Source Validator",
 		Description: "Use postconditions to validate data source outputs",
@@ -56,7 +56,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Output Validation
-	Challenges["output_contract"] = Challenge{
+	Challenges["output_contract"] = &Challenge{
 		ID:          "output_contract",
 		Name:        "Output Contract Enforcer",
 		Description: "Use preconditions in output blocks to enforce module contracts",
@@ -67,7 +67,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Complex Validation Chain
-	Challenges["validation_chain"] = Challenge{
+	Challenges["validation_chain"] = &Challenge{
 		ID:          "validation_chain",
 		Name:        "Validation Chain Architect",
 		Description: "Create a chain of resources with interconnected pre/postconditions",
@@ -78,7 +78,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Module Contract Challenge
-	Challenges["module_contract"] = Challenge{
+	Challenges["module_contract"] = &Challenge{
 		ID:          "module_contract",
 		Name:        "Module Contract Designer",
 		Description: "Design a module with comprehensive pre/postconditions for input validation and output guarantees",
@@ -89,7 +89,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Self-Reference Master
-	Challenges["self_reference_master"] = Challenge{
+	Challenges["self_reference_master"] = &Challenge{
 		ID:          "self_reference_master",
 		Name:        "Self-Reference Master",
 		Description: "Master the use of 'self' in postconditions to validate multiple attributes",
@@ -100,7 +100,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Conditional Validation
-	Challenges["conditional_validation"] = Challenge{
+	Challenges["conditional_validation"] = &Challenge{
 		ID:          "conditional_validation",
 		Name:        "Conditional Validation Expert",
 		Description: "Use complex boolean logic in condition blocks with multiple checks",
@@ -111,7 +111,7 @@ func registerValidationConditionChallenges() {
 	}
 
 	// Error Message Designer
-	Challenges["error_message_designer"] = Challenge{
+	Challenges["error_message_designer"] = &Challenge{
 		ID:          "error_message_designer",
 		Name:        "Error Message Designer",
 		Description: "Create helpful, informative error messages for all validation failures",
@@ -154,8 +154,7 @@ func validatePreconditionChallenge(proof map[string]interface{}) (bool, string, 
 	}
 
 	// Check what is being validated
-	validatesWhat, hasValidates := proof["validates"].(string)
-	if !hasValidates {
+	if _, hasValidates := proof["validates"].(string); !hasValidates {
 		return false, "", fmt.Errorf("specify what you're validating (e.g., 'variable', 'input', 'parameter')")
 	}
 
@@ -270,8 +269,7 @@ func validateDataSourceConditionChallenge(proof map[string]interface{}) (bool, s
 	}
 
 	// Verify what data attribute is validated
-	validatedAttr, hasAttr := proof["validated_data_attribute"].(string)
-	if !hasAttr || validatedAttr == "" {
+	if validatedAttr, hasAttr := proof["validated_data_attribute"].(string); !hasAttr || validatedAttr == "" {
 		return false, "", fmt.Errorf("specify which data attribute you validated")
 	}
 
@@ -298,8 +296,7 @@ func validateOutputConditionChallenge(proof map[string]interface{}) (bool, strin
 	}
 
 	// Check what is being validated
-	validatesWhat, hasValidates := proof["validates_before_output"].(string)
-	if !hasValidates || validatesWhat == "" {
+	if validatesWhat, hasValidates := proof["validates_before_output"].(string); !hasValidates || validatesWhat == "" {
 		return false, "", fmt.Errorf("specify what you're validating before output")
 	}
 
@@ -409,8 +406,8 @@ func validateModuleContractChallenge(proof map[string]interface{}) (bool, string
 		return false, "", fmt.Errorf("specify number of helpful error messages")
 	}
 
-	errors, err := strconv.Atoi(errorMessagesCount)
-	if err != nil || errors < 4 {
+	errorCount, err := strconv.Atoi(errorMessagesCount)
+	if err != nil || errorCount < 4 {
 		return false, "", fmt.Errorf("provide at least 4 helpful error messages for consumers")
 	}
 
