@@ -25,13 +25,16 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"ctfchallenge_flag_validator": resourceFlagValidator(),
-			"ctfchallenge_puzzle_box":     resourcePuzzleBox(),
+			"ctfchallenge_flag_validator":     resourceFlagValidator(),
+			"ctfchallenge_puzzle_box":         resourcePuzzleBox(),
+			"ctfchallenge_meta_challenge":     resourceMetaChallenge(),
+			"ctfchallenge_validated_resource": resourceValidatedResource(), // ADD THIS LINE
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"ctfchallenge_hint":           dataSourceHint(),
-			"ctfchallenge_list":           dataSourceChallengeList(),
-			"ctfchallenge_challenge_info": dataSourceChallengeInfo(),
+			"ctfchallenge_hint":              dataSourceHint(),
+			"ctfchallenge_list":              dataSourceChallengeList(),
+			"ctfchallenge_challenge_info":    dataSourceChallengeInfo(),
+			"ctfchallenge_validation_helper": dataSourceValidationHelper(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
